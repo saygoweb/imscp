@@ -44,7 +44,7 @@ use parent 'Common::SingletonClass';
 
 =over 4
 
-=item registerPackage($package, [$packageVersion = 'dev-master'])
+=item registerPackage($package [, $packageVersion = 'dev-master' ])
 
  Register the given composer package for installation
 
@@ -60,7 +60,7 @@ sub registerPackage
 
 	$packageVersion ||= 'dev-master';
 
-	push @{$self->{'toInstall'}}, "\t\t\"$package\":\"$packageVersion\"";
+	push @{$self->{'toInstall'}}, "        \"$package\": \"$packageVersion\"";
 
 	0;
 }
@@ -81,10 +81,9 @@ sub registerPackage
 
 sub _init
 {
-	my $self = $_[0];
+	my $self = shift;
 
 	$self->{'toInstall'} = [];
-
 	$self->{'wrkDir'} = "$main::imscpConfig{'CACHE_DATA_DIR'}/packages";
 
 	# Override default composer home directory
@@ -109,7 +108,7 @@ sub _init
 			my $rs = $self->_clearLocalRepository() if iMSCP::Getopt->cleanPackagesCache;
 			return $rs if $rs;
 
-			$rs = iMSCP::Dir->new('dirname' => $self->{'wrkDir'})->make();
+			$rs = iMSCP::Dir->new( dirname => $self->{'wrkDir'} )->make();
 			return $rs if $rs;
 
 			if(! iMSCP::Getopt->skipPackagesUpdate || ! -x "$self->{'wrkDir'}/composer.phar") {
@@ -118,7 +117,7 @@ sub _init
 			}
 
 			# Skip packages update if asked by user but only if all requirements for package versions are meets
-			if( ! iMSCP::Getopt->skipPackagesUpdate || $self->_checkRequirements()) {
+			if(! iMSCP::Getopt->skipPackagesUpdate || $self->_checkRequirements()) {
 				$rs = $self->_installPackages();
 			}
 
@@ -127,69 +126,6 @@ sub _init
 	);
 
 	$self;
-}
-
-=item _installPackages()
-
- Install or update packages
-
- Return 0 on success, other on failure
-
-=cut
-
-sub _installPackages
-{
-	my $self = $_[0];
-
-	my $rs = $self->_buildComposerFile();
-	return $rs if $rs;
-
-	iMSCP::Dialog->getInstance()->infobox(<<EOF);
-
-Fetching i-MSCP composer packages from GitHub.
-
-Please wait, depending on your connection, this may take few minutes.
-EOF
-
-	# The update option is used here but composer will automatically fallback to install mode when needed
-	my ($stdout, $stderr);
-	$rs = execute(
-		"$self->{'phpCmd'} $self->{'wrkDir'}/composer.phar --no-ansi -d=$self->{'wrkDir'} update --prefer-dist",
-		\$stdout,
-		\$stderr
-	);
-	debug($stdout) if $stdout;
-	error($stderr) if $stderr && $rs;
-	error('Unable to fetch i-MSCP composer packages from GitHub') if $rs && ! $stderr;
-
-	$rs;
-}
-
-=item _buildComposerFile()
-
- Build composer.json file
-
- Return 0 on success, other on failure
-
-=cut
-
-sub _buildComposerFile
-{
-	my $self = $_[0];
-
-	iMSCP::Dialog->getInstance()->infobox(<<EOF);
-
-Building composer.json file for composer packages...
-EOF
-
-	my $file = iMSCP::File->new('filename' => "$self->{'wrkDir'}/composer.json");
-
-	my $rs = $file->set(
-		process({ 'PACKAGES' => join ",\n", @{$self->{'toInstall'}} }, $self->_getComposerFileTpl())
-	);
-	return $rs if $rs;
-
-	$file->save();
 }
 
 =item _getComposer()
@@ -202,10 +138,9 @@ EOF
 
 sub _getComposer
 {
-	my $self = $_[0];
+	my $self = shift;
 
 	my $curDir = getcwd();
-	my $rs = 0;
 
 	unless (-f "$self->{'wrkDir'}/composer.phar") {
 		unless(chdir($self->{'wrkDir'})) {
@@ -215,17 +150,18 @@ sub _getComposer
 
 		iMSCP::Dialog->getInstance()->infobox(<<EOF);
 
-Fetching composer.phar from http://getcomposer.org.
+Installing/Updating composer.phar from http://getcomposer.org
 
 Please wait, depending on your connection, this may take few seconds...
 EOF
 
 		my ($stdout, $stderr);
-		$rs = execute("curl -s http://getcomposer.org/installer | $self->{'phpCmd'}", \$stdout, \$stderr);
+		my $rs = execute("curl -s http://getcomposer.org/installer | $self->{'phpCmd'}", \$stdout, \$stderr);
 		debug($stdout) if $stdout;
 		error($stderr) if $stderr && $rs;
 		error($stdout) if ! $stderr && $stdout && $rs;
-		error('Unable to get composer installer from http://getcomposer.org') if $rs && ! $stdout && ! $stderr;
+		error('Unable to install/update composer.phar from http://getcomposer.org') if $rs && ! $stdout && ! $stderr;
+		return $rs if $rs;
 
 		unless(chdir($curDir)) {
 			error("Unable to change working directory to $curDir: $!");
@@ -245,7 +181,7 @@ Please wait, depending on your connection, this may take few seconds...
 EOF
 
 		my ($stdout, $stderr);
-		$rs = execute(
+		my $rs = execute(
 			"$self->{'phpCmd'} $self->{'wrkDir'}/composer.phar --no-ansi -d=$self->{'wrkDir'} self-update",
 			\$stdout,
 			\$stderr
@@ -253,6 +189,7 @@ EOF
 		debug($stdout) if $stdout;
 		error($stderr) if $stderr && $rs;
 		error('Unable to update composer installer') if $rs && ! $stderr;
+		return $rs if $rs;
 
 		unless(chdir($curDir)) {
 			error("Unable to change working directory to $curDir: $!");
@@ -260,7 +197,87 @@ EOF
 		}
 	}
 
+	0;
+}
+
+=item _installPackages()
+
+ Install or update packages
+
+ Return 0 on success, other on failure
+
+=cut
+
+sub _installPackages
+{
+	my $self = shift;
+
+	my $rs = $self->_buildComposerFile();
+	return $rs if $rs;
+
+	my $stderr;
+	my $dialog = iMSCP::Dialog->getInstance();
+	my $msgHeader = <<EOF;
+
+Installing/Updating i-MSCP composer packages from Github
+
+EOF
+	my $msgFooter = <<EOF;
+
+Please wait, depending on your connection, this may take few seconds...
+EOF
+
+	# The update option is used here but composer will automatically fallback to install mode when needed
+	# Note: Any progress/status info goes to stderr (See https://github.com/composer/composer/issues/3795)
+	$rs = executeNoWait(
+		"$self->{'phpCmd'} $self->{'wrkDir'}/composer.phar --no-ansi -d=$self->{'wrkDir'} update --prefer-dist",
+		sub { my $str = shift; $$str = ''; },
+		sub {
+			my $str = shift;
+
+			if($$str =~ /^$/m) {
+				$$str = '';
+			} else {
+				my ($strBkp, $buff) = ($$str, '');
+				$buff .= $1 while($$str =~ s/^(.*\n)//);
+
+				if($buff ne '') {
+					$dialog->infobox("$msgHeader$buff$msgFooter");
+					$$str = $strBkp unless $strBkp =~ /^Updating dependencies.*\n/m;
+				}
+			}
+		}
+	);
+
+	error("Unable to install/update i-MSCP composer packages from GitHub: $stderr") if $stderr && $rs;
+	error('Unable to install/update i-MSCP composer packages from GitHub: Unknown error') if $rs && ! $stderr;
+
 	$rs;
+}
+
+=item _buildComposerFile()
+
+ Build composer.json file
+
+ Return 0 on success, other on failure
+
+=cut
+
+sub _buildComposerFile
+{
+	my $self = shift;
+
+	iMSCP::Dialog->getInstance()->infobox(<<EOF);
+
+Building composer.json file for composer packages...
+EOF
+
+	my $file = iMSCP::File->new( filename => "$self->{'wrkDir'}/composer.json" );
+
+	my $rs = $file->set(process({ 'PACKAGES' => join ",\n", @{$self->{'toInstall'}} }, $self->_getComposerFileTpl()));
+	return $rs if $rs;
+
+	$file->save();
 }
 
 =item _getComposerFileTpl()
@@ -275,10 +292,13 @@ sub _getComposerFileTpl
 {
 	<<EOF;
 {
-	"require": {
+    "name": "imscp/packages",
+    "description": "i-MSCP composer packages",
+    "licence": "GPL-2.0+",
+    "require": {
 {PACKAGES}
-	},
-	"minimum-stability":"dev"
+    },
+    "minimum-stability": "dev"
 }
 EOF
 }
@@ -293,19 +313,18 @@ EOF
 
 sub _clearLocalRepository
 {
-	my $self = $_[0];
-
-	my $rs = 0;
+	my $self = shift;
 
 	if(-d $self->{'wrkDir'}) {
 		my ($stdout, $stderr);
-		$rs = execute("rm -fR $self->{'wrkDir'}", \$stdout, \$stderr);
+		my $rs = execute("rm -fR $self->{'wrkDir'}", \$stdout, \$stderr);
 		debug($stdout) if $stdout;
-		error($stderr) if $stderr && $rs;
-		error('Unable to clear local repository') if $rs && ! $stderr;
+		error("Unable to clear local repository: $stderr") if $stderr && $rs;
+		error('Unable to clear local repository: Unknown error') if $rs && ! $stderr;
+		return $rs;
 	}
 
-	$rs;
+	0;
 }
 
 =item _checkRequirements()
@@ -318,37 +337,29 @@ sub _clearLocalRepository
 
 sub _checkRequirements
 {
-	my $self = $_[0];
+	my $self = shift;
 
 	return 1 unless -d $self->{'wrkDir'};
 
-	my $rs = 0;
-
 	for(@{$self->{'toInstall'}}) {
-		my ($package, $version) = $_ =~ /"(.*)":"(.*)"/;
+		my ($package, $version) = $_ =~ /"(.*)":\s*"(.*)"/;
 
 		my @cmd = (
-			$self->{'phpCmd'},
-			"$self->{'wrkDir'}/composer.phar",
-			'--no-ansi',
-			"-d=$self->{'wrkDir'}",
-			'show',
-			'--installed',
-			escapeShell($package),
-			escapeShell($version)
+			$self->{'phpCmd'}, "$self->{'wrkDir'}/composer.phar", '--no-ansi', "-d=$self->{'wrkDir'}", 'show',
+			'--installed', escapeShell($package), escapeShell($version)
 		);
 
 		my ($stdout, $stderr);
-		$rs = execute("@cmd", \$stdout, \$stderr);
+		my $rs = execute("@cmd", \$stdout, \$stderr);
 		debug($stdout) if $stdout;
 
 		if($rs) {
 			debug(sprintf("Required version (%s) of package %s not found in local repository.", $package, $version));
-			last;
+			return 1;
 		}
 	}
 
-	$rs;
+	0;
 }
 
 =back

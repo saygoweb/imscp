@@ -25,8 +25,6 @@ use DateTime;
 use DateTime::TimeZone;
 use Net::LibIDN qw/idn_to_ascii idn_to_unicode/;
 use Data::Validate::Domain qw/is_domain/;
-use IPC::Open3;
-use IO::Select;
 use Scalar::Util qw(openhandle);
 use File::Basename;
 use iMSCP::LsbRelease;
@@ -129,7 +127,7 @@ sub setupDialog
 			\&setupAskDbPrefixSuffix,
 			\&setupAskDefaultAdmin,
 			\&setupAskAdminEmail,
-			\&setupAskPhpTimezone,
+			\&setupAskTimezone,
 			\&setupAskServicesSsl,
 			\&setupAskImscpBackup,
 			\&setupAskDomainBackup
@@ -679,7 +677,7 @@ sub setupAskDbPrefixSuffix
 "
 \\Z4\\Zb\\ZuMySQL Database Prefix/Suffix\\Zn
 
-Do you want use a prefix or suffix for customers's SQL databases?
+Do you want use a prefix or suffix for customer's SQL databases?
 
 \\Z4Infront:\\Zn A numeric prefix such as '1_' will be added to each customer
          SQL user and database name.
@@ -835,26 +833,26 @@ sub setupAskAdminEmail
 	$rs;
 }
 
-# Ask for PHP timezone
-sub setupAskPhpTimezone
+# Ask for timezone
+sub setupAskTimezone
 {
 	my $dialog = $_[0];
 
 	my $defaultTimezone = DateTime->new(year => 0, time_zone => 'local')->time_zone->name;
-	my $timezone = setupGetQuestion('PHP_TIMEZONE');
+	my $timezone = setupGetQuestion('TIMEZONE');
 	my $rs = 0;
 
-	if($main::reconfigure ~~ ['php', 'all', 'forced'] || ! ($timezone && DateTime::TimeZone->is_valid_name($timezone))) {
-		$timezone = $defaultTimezone if ! $timezone;
+	if($main::reconfigure ~~ [ 'timezone', 'all', 'forced' ] || ! ($timezone && DateTime::TimeZone->is_valid_name($timezone))) {
+		$timezone = $defaultTimezone unless $timezone;
 		my $msg = '';
 
 		do {
-			($rs, $timezone) = $dialog->inputbox("\nPlease enter a timezone for PHP: $msg", $timezone);
+			($rs, $timezone) = $dialog->inputbox("\nPlease enter your timezone: $msg", $timezone);
 			$msg = "\n\n\\Z1'$timezone' is not a valid timezone.\\Zn\n\nPlease, try again:";
 		} while($rs != 30 && ! DateTime::TimeZone->is_valid_name($timezone));
 	}
 
-	setupSetQuestion('PHP_TIMEZONE', $timezone) if $rs != 30;
+	setupSetQuestion('TIMEZONE', $timezone) if $rs != 30;
 
 	$rs;
 }
@@ -1123,7 +1121,7 @@ sub setupCreateSystemDirectories
 	return $rs if $rs;
 
 	for (@systemDirectories) {
-		$rs = iMSCP::Dir->new('dirname' => $_->[0])->make({ 'user' => $_->[1], 'group' => $_->[2], 'mode' => $_->[3]});
+		$rs = iMSCP::Dir->new( dirname => $_->[0] )->make({ 'user' => $_->[1], 'group' => $_->[2], 'mode' => $_->[3]});
 		return $rs if $rs;
 	}
 
@@ -1680,33 +1678,17 @@ sub setupSetPermissions
 	for my $script ('set-engine-permissions.pl', 'set-gui-permissions.pl') {
 		startDetail();
 
-		my $pid;
-
-		eval { $pid = open3(*FHIN, *FHOUT, *FHERR, "perl $main::imscpConfig{'ENGINE_ROOT_DIR'}/setup/$script --setup"); };
-		if($@) {
-			error("Unable to set permissions: $@");
-			return 1;
-		}
-
-		close FHIN;
-
-		while(<FHOUT>) {
-			chomp;
-			step(undef, $1, $2, $3) if /^(.*)\t(.*)\t(.*)$/;
-		}
-
-		my $stderr = do { local $/; <FHERR> };
-
-		close FHOUT;
-		close FHERR;
-
-		waitpid($pid, 0) if $pid > 0;
-		$rs = getExitCode();
+		my $stderr;
+		$rs = executeNoWait(
+			"perl $main::imscpConfig{'ENGINE_ROOT_DIR'}/setup/$script --setup",
+			sub { my $str = shift; while ($$str =~ s/^(.*)\t(.*)\t(.*)\n//) { step(undef, $1, $2, $3); } },
+			sub { my $str = shift; while ($$str =~ s/^(.*\n)//) { $stderr .= $1; } }
+		);
 
 		endDetail();
 
-		error($stderr) if $stderr && $rs;
-		error("Error while setting permissions") if $rs && ! $stderr;
+		error("Error while setting permissions: $stderr") if $stderr && $rs;
+		error('Error while setting permissions: Unknown error') if $rs && ! $stderr;
 		return $rs if $rs;
 	}
 
@@ -1715,7 +1697,7 @@ sub setupSetPermissions
 	iMSCP::EventManager->getInstance()->trigger('afterSetupSetPermissions');
 }
 
-# Rebuild all customers's configuration files
+# Rebuild all customer's configuration files
 sub setupRebuildCustomerFiles
 {
 	my $rs = iMSCP::EventManager->getInstance()->trigger('beforeSetupRebuildCustomersFiles');
@@ -1801,29 +1783,12 @@ sub setupRebuildCustomerFiles
 
 	startDetail();
 
-	my $pid;
-
-	eval { $pid = open3(*FHIN, *FHOUT, *FHERR, "perl $main::imscpConfig{'ENGINE_ROOT_DIR'}/imscp-rqst-mngr --setup"); };
-	if($@) {
-		error("Unable to rebuild customers files: $@");
-		return 1;
-	}
-
-	close FHIN;
-
-	while(<FHOUT>) {
-		# "$type\t$status\t$name\t$id\t$total\t$i\n"
-		chomp;
-		step(undef, "Processing $1 ($2) tasks: $3 (ID $4)", $5, $6) if /^(.*)\t(.*)\t(.*)\t(.*)\t(.*)\t(.*)$/;
-	}
-
-	my $stderr = do { local $/; <FHERR> };
-
-	close FHOUT;
-	close FHERR;
-
-	waitpid($pid, 0) if $pid > 0;
-	$rs = getExitCode();
+	my $stderr;
+	$rs = executeNoWait(
+		"perl $main::imscpConfig{'ENGINE_ROOT_DIR'}/imscp-rqst-mngr --setup",
+		sub { my $str = shift; while ($$str =~ s/^(.*)\t(.*)\t(.*)\n//) { step(undef, $1, $2, $3); } },
+		sub { my $str = shift; while ($$str =~ s/^(.*\n)//) { $stderr .= $1; } }
+	);
 
 	endDetail();
 
@@ -1831,8 +1796,8 @@ sub setupRebuildCustomerFiles
 
 	$main::imscpConfig{'DEBUG'} = $debug;
 
-	error("\n$stderr") if $stderr && $rs;
-	error("Error while rebuilding customers files") if $rs && ! $stderr;
+	error("\nError while rebuilding customers files: $stderr") if $stderr && $rs;
+	error('Error while rebuilding customers files: Unknown error') if $rs && ! $stderr;
 	return $rs if $rs;
 
 	iMSCP::EventManager->getInstance()->trigger('afterSetupRebuildCustomersFiles');

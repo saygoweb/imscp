@@ -27,9 +27,7 @@ use strict;
 use warnings;
 use iMSCP::Debug;
 use iMSCP::File;
-use File::HomeDir;
 use Servers::sqld::mysql;
-
 use parent 'Common::SingletonClass';
 
 =head1 DESCRIPTION
@@ -50,7 +48,9 @@ use parent 'Common::SingletonClass';
 
 sub uninstall
 {
-	$_[0]->_removeOptionsFile();
+	my $self = shift;
+
+	$self->_removeConfig();
 }
 
 =back
@@ -69,38 +69,29 @@ sub uninstall
 
 sub _init
 {
-	my $self = $_[0];
+	my $self = shift;
 
-	$self->{'sqld'} = Servers::sqld::mysql->getInstance();
-
-	$self->{'cfgDir'} = "$main::imscpConfig{'CONF_DIR'}/mysql";
-	$self->{'bkpDir'} = "$self->{'cfgDir'}/backup";
-	$self->{'wrkDir'} = "$self->{'cfgDir'}/working";
+	$self->{'sqld'} = Servers::sqld->factory()->getInstance();
 
 	$self;
 }
 
-=item _removeOptionsFile()
+=item _removeConfig()
 
- Remove options file (root user .my.cnf file)
+ Remove imscp configuration file
 
  Return int 0 on success, other on failure
 
 =cut
 
-sub _removeOptionsFile
+sub _removeConfig
 {
-	my $self = $_[0];
+	my $self = shift;
 
-	my $homeDir = File::HomeDir->users_home($main::imscpConfig{'ROOT_USER'});
+	my $filepath = "$self->{'sqld'}->{'config'}->{'SQLD_CONF_DIR'}/conf.d/imscp.cnf";
 
-	if(defined $homeDir) {
-		if(-f "$homeDir/.my.cnf") {
-			return iMSCP::File->new( filename => "$homeDir/.my.cnf" )->delFile();
-		}
-	} else {
-		error('Unable to find root user homedir');
-		return 1;
+	if(-f $filepath) {
+		return iMSCP::File->new( filename => $filepath )->delFile();
 	}
 
 	0;

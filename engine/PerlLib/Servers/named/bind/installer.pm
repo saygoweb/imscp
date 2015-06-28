@@ -378,7 +378,7 @@ sub _switchTasks
 {
 	my $self = shift;
 
-	my $slaveDbDir = iMSCP::Dir->new('dirname' => "$self->{'config'}->{'BIND_DB_DIR'}/slave");
+	my $slaveDbDir = iMSCP::Dir->new( dirname => "$self->{'config'}->{'BIND_DB_DIR'}/slave" );
 
 	if($self->{'config'}->{'BIND_MODE'} eq 'slave') {
 		my $rs = $slaveDbDir->make({
@@ -540,7 +540,7 @@ sub _buildConf
 
 =item _saveConf()
 
- Save bind.data configuration file
+ Save configuration file
 
  Return int 0 on success, other on failure
 

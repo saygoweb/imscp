@@ -1,6 +1,6 @@
 =head1 NAME
 
- Servers::ftpd - i-MSCP Ftpd Server implementation
+ Servers::sqld::remote_server - i-MSCP remote SQL server implementation
 
 =cut
 
@@ -21,72 +21,56 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-package Servers::ftpd;
+package Servers::sqld::remote_server;
 
 use strict;
 use warnings;
-use iMSCP::Debug;
-
-our $instance;
+use parent 'Servers::sqld::mysql';
 
 =head1 DESCRIPTION
 
- i-MSCP ftpd server implementation.
+ i-MSCP remote SQL server implementation.
 
 =head1 PUBLIC METHODS
 
 =over 4
 
-=item factory()
+=item postinstall()
 
- Create and return ftpd server instance
+ Process postinstall tasks
 
- Return Ftpd server instance
-
-=cut
-
-sub factory
-{
-	unless(defined $instance) {
-		my $sName = $main::imscpConfig{'FTPD_SERVER'} || 'no';
-		my $package = ($sName eq 'no') ? 'Servers::noserver' : "Servers::ftpd::$sName";
-		eval "require $package";
-		fatal($@) if $@;
-		$instance = $package->getInstance();
-	}
-
-	$instance;
-}
-
-=item can($method)
-
- Checks if the ftpd server class provide the given method
-
- Param string $method Method name
- Return subref|undef
+ Return int 0 on success, other on failure
 
 =cut
 
-sub can
+sub postinstall
 {
-	my ($self, $method) = @_;
+	my $self = shift;
 
-	$self->factory()->can($method);
+	my $rs = $self->{'eventManager'}->trigger('beforeSqldPostInstall', 'mysql');
+	return $rs if $rs;
+
+	$self->{'eventManager'}->trigger('afterSqldPostInstall', 'mysql');
 }
 
-END
+=item restart()
+
+ Restart server
+
+ Return int 0 on success, other on failure
+
+=cut
+
+sub restart
 {
-	unless(defined $main::execmode && $main::execmode eq 'setup') {
-		my $rs = $?;
+	my $self = shift;
 
-		if($Servers::ftpd::instance->{'start'}) {
-			$rs ||= $Servers::ftpd::instance->start();
-		} elsif($Servers::ftpd::instance->{'restart'}) {
-			$rs ||= $Servers::ftpd::instance->restart();
-		}
+	my $rs = $self->{'eventManager'}->trigger('beforeSqldRestart');
+	return $rs if $rs;
 
-		$? = $rs;
-	}
+	# Nothing to do there
+
+	$self->{'eventManager'}->trigger('afterSqldRestart');
 }
 
 =back
