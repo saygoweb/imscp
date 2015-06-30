@@ -9,11 +9,13 @@ BACKEND
 	Added: NAMED_BNAME (named binary name) configuration parameter - Named (Bind9) server impl.
 	Changed: Customers have now a full read access to their http logs, including those which were rotated
 	Changed: Domain's logs are now mounted in customer's logs folder using bind mount instead of being copied
+	Fixed: closedir() attempted on invalid dirhandle DIRH at line 312 (iMSCP::Dir)
 	Fixed: Due to logs rotation, some httpd logs are never copied into customer's log folders
 	Fixed: File /etc/mysql/conf.d/imscp.cnf not loaded when using Percona DB server due to missing /etc/mysql/my.cnf file
 	Fixed: POP3 SSL and IMAP SSL services must be disabled when SSL is disabled for the services - Courier server impl.
 	Fixed: The .my.cnf file is no longer used and thus, must be removed
 	Fixed: Set timezone according TIMEZONE configuration parameter (iMSCP::Bootstrapper::boot())
+	Rewritten: iMSCP::Dir library
 
 CONFIGS
 	Added: ADM_GROUP configuration parameter
@@ -43,6 +45,7 @@ YOUTRACK
 	Fixed: #IP-1364: Custom DNS records are lost when editing domain properties
 	Fixed: #IP-1371: Bug - When removing domain alias, the vhost link in /etc/apache2/sites-enabled is not removed
 	Fixed: #IP-1373: Compliance with RFC 2142 - Add a hostmaster address by default
+	Fixed: #IP-1374: Allows reuse of same SQL username for i-MSCP managed services such as phpmyadmin, proftpd...
 
 ------------------------------------------------------------------------------------------------------------------------
 1.2.8
