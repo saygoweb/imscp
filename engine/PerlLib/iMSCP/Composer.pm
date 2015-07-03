@@ -240,6 +240,7 @@ EOF
 				$buff .= $1 while($$str =~ s/^(.*\n)//);
 
 				if($buff ne '') {
+					debug($buff);
 					$dialog->infobox("$msgHeader$buff$msgFooter");
 					$$str = $strBkp unless $strBkp =~ /^Updating dependencies.*\n/m;
 				}
@@ -326,7 +327,7 @@ sub _checkRequirements
 		my ($package, $version) = $_ =~ /"(.*)":\s*"(.*)"/;
 		my ($stdout, $stderr);
 		my $rs = execute(
-			"self->{'phpCmd'} $self->{'pkgDir'}/composer.phar --no-ansi -d=$self->{'pkgDir'} show --installed " .
+			"$self->{'phpCmd'} $self->{'pkgDir'}/composer.phar --no-ansi -d=$self->{'pkgDir'} show --installed " .
 				escapeShell($package) . ' ' . escapeShell($version),
 			\$stdout,
 			\$stderr

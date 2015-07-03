@@ -240,7 +240,7 @@ sub make
 			$self->mode($options->{'mode'});
 		}
 
-		if($options->{'user'} || $options->{'group'}) {
+		if(defined $options->{'user'} || defined $options->{'group'}) {
 			$self->owner($options->{'user'} // -1, $options->{'group'} // -1, $self->{'dirname'});
 		}
 	}
@@ -302,7 +302,7 @@ sub rcopy
 {
 	my ($self, $destDir, $options) = @_;
 
-	$options = { } if ref $options ne 'HASH';
+	$options = { } unless defined $options && ref $options eq 'HASH';
 
 	defined $self->{'dirname'} or die("Attribute 'dirname' is not defined");
 

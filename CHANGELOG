@@ -4,8 +4,15 @@
 Git 1.2.x
 ------------------------------------------------------------------------------------------------------------------------
 
+------------------------------------------------------------------------------------------------------------------------
+1.2.9
+------------------------------------------------------------------------------------------------------------------------
+
+2015-07-03: Laurent Declercq
+	RELEASE i-MSCP 1.2.9
+
 BACKEND
-	Added: Dedicated package for remote SQL server
+	Added: Dedicated server implementation for remote SQL server
 	Added: NAMED_BNAME (named binary name) configuration parameter - Named (Bind9) server impl.
 	Changed: Customers have now a full read access to their http logs, including those which were rotated
 	Changed: Domain's logs are now mounted in customer's logs folder using bind mount instead of being copied
@@ -19,10 +26,11 @@ BACKEND
 
 CONFIGS
 	Added: ADM_GROUP configuration parameter
-	Added: courier-authdaemon init script - Init script provided by Debian/Ubuntu do not work
+	Added: courier-authdaemon init script - Status command from init script provided by Debian/Ubuntu do not work
 	Added: mysql.data configuration file
 	Added: percona 5.5/5.6 in Debian Jessie package file
 	Added: percona 5.5/5.6 in Ubuntu Vivid Vervet package file
+	Added: Respawn limit for imscp_daemon and imscp_panel upstart jobs
 	Added: TIMEZONE configuration parameter
 	Removed: TLS cipher suite - Setting TLSProtocol TLSv1 is sufficient to protect against poodle attack (ProFTPD)
 	Removed: PHP_TIMEZONE parameter (replaced by global TIMEZONE parameter)
@@ -35,8 +43,9 @@ FRONTEND
 	Fixed: Opcode cache must be cleared when the languages index is rebuilt
 
 INSTALLER
-	Added: Progress info for i-MSCP composer packages (Setup dialog)
+	Added: Progress info for i-MSCP composer packages (dialog)
 	Added: timezone item for the reconfigure command line option (Allow to setup global timezone)
+	Fixed: Invalid version format (non-numeric data) when updating from an RC release
 
 YOUTRACK
 	Fixed: #IP-0792: Allow customers to see real-time http access and error logs
