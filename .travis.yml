@@ -23,4 +23,4 @@ notifications:
   email: false
 
 script:
-  - fakeroot perlbrew exec perl ./test/perlunit.pl
+  - fakeroot perlbrew exec --with perl-5.14,perl-5.16,perl-5.18,perl-5.20,perl-5.21 ./test/perlunit.pl
