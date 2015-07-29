@@ -13,8 +13,8 @@ addons:
     packages:
     - fakeroot
 
-#install:
-#  - perl -v
+install:
+  - echo "Nothing to do there..."
 
 notifications:
   irc:
