@@ -1,6 +1,6 @@
 sudo: false
 
-#language: perl
+language: perl
 
 #perl:
 #  - "5.14"
