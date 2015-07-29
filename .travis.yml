@@ -1,12 +1,17 @@
-sudo: true
+sudo: false
 
 language: perl
 
-perl:
-  - "5.14"
-  - "5.18"
-  - "5.20"
+#perl:
+#  - "5.14"
+#  - "5.18"
+#  - "5.20"
 #  - "5.22" # NOT YET AVAILABLE VIA PERLBREW ON TRAVIS
+
+addons:
+  apt:
+    packages:
+    - fakeroot
 
 install:
   - perl -v
@@ -18,4 +23,4 @@ notifications:
   email: false
 
 script:
-  - sudo perl ./test/perlunit.pl
+  - fakeroot perlbrew exec perl ./test/perlunit.pl
