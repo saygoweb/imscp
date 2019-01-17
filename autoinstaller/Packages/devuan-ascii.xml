@@ -4,8 +4,7 @@
                 default="1"
                 description="Nginx server"
                 class="Package::FrontEnd"
-                repository_conflict="http://nginx.org/packages/ubuntu"
-        >
+                repository_conflict="http://nginx.org/packages/debian">
             <package>nginx-full</package>
             <package_conflict>nginx</package_conflict>
         </nginx>
@@ -50,23 +49,23 @@
                 description="PHP 5.6"
                 class="Servers::php"
                 repository_conflict="http://packages.dotdeb.org"
-                repository="http://ppa.launchpad.net/ondrej/php/ubuntu xenial main"
-                repository_key_id="0x4F4EA0AAE5267A6C"
-                repository_key_srv="keyserver.ubuntu.com"
+                repository="https://packages.sury.org/php/ stretch main"
+                repository_key_uri="https://packages.sury.org/php/apt.gpg"
                 pinning_package="*"
-                pinning_pin="release o=LP-PPA-ondrej-php"
+                pinning_pin="origin packages.sury.org"
                 pinning_pin_priority="1001"
                 keep_installed="1"
         >
             <package>php5.6</package>
-            <package post_install_tasks="update-alternatives --set php /usr/bin/php5.6">php5.6-cli</package>
             <package>php5.6-cgi</package>
+            <package post_install_tasks="update-alternatives --set php /usr/bin/php5.6">php5.6-cli</package>
             <package>php5.6-fpm</package>
             <package
                     post_install_tasks="phpenmod ctype fileinfo ftp gettext iconv pdo phar posix sockets; update-alternatives --set phar /usr/bin/phar5.6; update-alternatives --set phar.phar /usr/bin/phar.phar5.6"
             >
                 php5.6-common
             </package>
+            <package post_install_tasks="phpenmod bz2">php5.6-bz2</package>
             <package post_install_tasks="phpenmod curl">php5.6-curl</package>
             <package post_install_tasks="phpenmod gd">php5.6-gd</package>
             <package post_install_tasks="phpenmod gmp">php5.6-gmp</package>
@@ -80,21 +79,20 @@
             <package post_install_tasks="phpenmod pspell">php5.6-pspell</package>
             <package post_install_tasks="phpenmod dom xml xmlreader xmlwriter">php5.6-xml</package>
             <package post_install_tasks="phpenmod zip">php5.6-zip</package>
-            <package post_install_tasks="sh php_apcu.sh 5.6">php-apcu</package>
+            <package post_install_tasks="phpenmod apcu">php-apcu</package>
             <package>php-pear</package>
             <package>libapache2-mod-php5.6</package>
-            <package_conflict>libapache2-mod-php5</package_conflict>
             <package_conflict>php5-common</package_conflict>
+            <package_conflict>libapache2-mod-php5</package_conflict>
         </php5.6>
         <php7.0
                 description="PHP 7.0"
                 class="Servers::php"
                 repository_conflict="http://packages.dotdeb.org"
-                repository="http://ppa.launchpad.net/ondrej/php/ubuntu xenial main"
-                repository_key_id="0x4F4EA0AAE5267A6C"
-                repository_key_srv="keyserver.ubuntu.com"
+                repository="https://packages.sury.org/php/ stretch main"
+                repository_key_uri="https://packages.sury.org/php/apt.gpg"
                 pinning_package="*"
-                pinning_pin="origin ppa.launchpad.net"
+                pinning_pin="origin packages.sury.org"
                 pinning_pin_priority="1001"
                 keep_installed="1"
         >
@@ -107,6 +105,7 @@
             >
                 php7.0-common
             </package>
+            <package post_install_tasks="phpenmod bz2">php7.0-bz2</package>
             <package post_install_tasks="phpenmod curl">php7.0-curl</package>
             <package post_install_tasks="phpenmod gd">php7.0-gd</package>
             <package post_install_tasks="phpenmod gmp">php7.0-gmp</package>
@@ -117,11 +116,11 @@
             <package post_install_tasks="phpenmod mcrypt">php7.0-mcrypt</package>
             <package post_install_tasks="phpenmod mysqlnd mysqli pdo_mysql">php7.0-mysql</package>
             <package post_install_tasks="phpenmod opcache">php7.0-opcache</package>
-            <package post_install_tasks="phpenmod pspell">php7.0-pspell</package>>
+            <package post_install_tasks="phpenmod pspell">php7.0-pspell</package>
             <package post_install_tasks="phpenmod dom xml xmlreader xmlwriter">php7.0-xml</package>
             <package post_install_tasks="phpenmod zip">php7.0-zip</package>
-            <package post_install_tasks="sh php_apcu.sh 7.0">php-apcu</package>
-            <package post_install_tasks="sh php_apcu_bc.sh 7.0">php-apcu-bc</package>
+            <package post_install_tasks="phpenmod apcu">php-apcu</package>
+            <package post_install_tasks="phpenmod apcu_bc">php-apcu-bc</package>
             <package>php-pear</package>
             <package>libapache2-mod-php7.0</package>
             <package_conflict>php5-common</package_conflict>
@@ -130,11 +129,11 @@
         <php7.1
                 description="PHP 7.1"
                 class="Servers::php"
-                repository="http://ppa.launchpad.net/ondrej/php/ubuntu xenial main"
-                repository_key_id="0x4F4EA0AAE5267A6C"
-                repository_key_srv="keyserver.ubuntu.com"
+                repository_conflict="http://packages.dotdeb.org"
+                repository="https://packages.sury.org/php/ stretch main"
+                repository_key_uri="https://packages.sury.org/php/apt.gpg"
                 pinning_package="*"
-                pinning_pin="release o=LP-PPA-ondrej-php"
+                pinning_pin="origin packages.sury.org"
                 pinning_pin_priority="1001"
                 keep_installed="1"
         >
@@ -147,6 +146,7 @@
             >
                 php7.1-common
             </package>
+            <package post_install_tasks="phpenmod bz2">php7.1-bz2</package>
             <package post_install_tasks="phpenmod curl">php7.1-curl</package>
             <package post_install_tasks="phpenmod gd">php7.1-gd</package>
             <package post_install_tasks="phpenmod gmp">php7.1-gmp</package>
@@ -160,8 +160,8 @@
             <package post_install_tasks="phpenmod pspell">php7.1-pspell</package>
             <package post_install_tasks="phpenmod dom xml xmlreader xmlwriter">php7.1-xml</package>
             <package post_install_tasks="phpenmod zip">php7.1-zip</package>
-            <package post_install_tasks="sh php_apcu.sh 7.1">php-apcu</package>
-            <package post_install_tasks="sh php_apcu_bc.sh 7.1">php-apcu-bc</package>
+            <package post_install_tasks="phpenmod apcu">php-apcu</package>
+            <package post_install_tasks="phpenmod apcu_bc">php-apcu-bc</package>
             <package>php-pear</package>
             <package>libapache2-mod-php7.1</package>
             <package_conflict>php5-common</package_conflict>
@@ -170,11 +170,11 @@
         <php7.2
                 description="PHP 7.2"
                 class="Servers::php"
-                repository="http://ppa.launchpad.net/ondrej/php/ubuntu xenial main"
-                repository_key_id="0x4F4EA0AAE5267A6C"
-                repository_key_srv="keyserver.ubuntu.com"
+                repository_conflict="http://packages.dotdeb.org"
+                repository="https://packages.sury.org/php/ stretch main"
+                repository_key_uri="https://packages.sury.org/php/apt.gpg"
                 pinning_package="*"
-                pinning_pin="release o=LP-PPA-ondrej-php"
+                pinning_pin="origin packages.sury.org"
                 pinning_pin_priority="1001"
                 keep_installed="1"
         >
@@ -210,11 +210,11 @@
         <php7.3
                 description="PHP 7.3"
                 class="Servers::php"
-                repository="http://ppa.launchpad.net/ondrej/php/ubuntu xenial main"
-                repository_key_id="0x4F4EA0AAE5267A6C"
-                repository_key_srv="keyserver.ubuntu.com"
+                repository_conflict="http://packages.dotdeb.org"
+                repository="https://packages.sury.org/php/ stretch main"
+                repository_key_uri="https://packages.sury.org/php/apt.gpg"
                 pinning_package="*"
-                pinning_pin="release o=LP-PPA-ondrej-php"
+                pinning_pin="origin packages.sury.org"
                 pinning_pin_priority="1001"
                 keep_installed="1"
         >
@@ -299,13 +299,7 @@
                 description="VsFTPD server"
                 class="Servers::ftpd::vsftpd"
         >
-            <package
-                    rebuild_with_patches="libpam-mysql/patches/dpatch"
-                    patch_sys_type="dpatch"
-                    pkg_src_name="pam-mysql"
-            >
-                libpam-mysql
-            </package>
+            <package>libpam-mysql</package>
             <package>vsftpd</package>
             <package_conflict>proftpd-basic</package_conflict>
         </vsftpd>
@@ -327,48 +321,50 @@
         </external_server>
     </named>
     <sql>
-        <mysql_5.7
-                default="1"
-                description="MySQL 5.7 server"
+        <mysql_5.6
+                description="MySQL 5.6 server"
                 class="Servers::sqld::mysql"
-                pinning_package="libmysqlclient20 mysql-client-5.7 mysql-common mysql-server-5.7"
-                pinning_pin="release o=Ubuntu,n=xenial"
-                pinning_pin_priority="1001"
-                allow_switch="remote_server"
-        >
-            <package>libmysqlclient20</package>
-            <package>mysql-client-5.7</package>
-            <package>mysql-common</package>
-            <package>mysql-server-5.7</package>
-        </mysql_5.7>
-        <mariadb_10.0
-                description="MariaDB 10.0 server"
-                class="Servers::sqld::mariadb"
-                pinning_package="libmysqlclient20 mariadb-client-10.0 mariadb-common mariadb-server-10.0 mysql-common"
-                pinning_pin="release o=Ubuntu,n=xenial"
-                pinning_pin_priority="1001"
-                allow_switch="mariadb_10.1,mariadb_10.2,remote_server"
-        >
-            <package>libmysqlclient20</package>
-            <package>mariadb-client-10.0</package>
-            <package>mariadb-common</package>
-            <package pre_install_tasks="/bin/mkdir -p /etc/mysql/mariadb.conf.d">mariadb-server-10.0</package>
-            <package>mysql-common</package>
-        </mariadb_10.0>
-        <mariadb_10.1
-                description="MariaDB 10.1 server"
-                class="Servers::sqld::mariadb"
-                repository="http://mirror.netcologne.de/mariadb/repo/10.1/ubuntu xenial main"
-                repository_key_id="0xF1656F24C74CD1D8"
+                repository="http://repo.mysql.com/apt/debian/ stretch mysql-5.6"
+                repository_key_id="5072E1F5"
                 repository_key_srv="keyserver.ubuntu.com"
                 pinning_package="*"
-                pinning_pin="release o=MariaDB,n=xenial"
+                pinning_pin="origin repo.mysql.com"
+                pinning_pin_priority="1001"
+                allow_switch="mysql_5.7,remote_server"
+        >
+            <package>libmariadbclient18</package>
+            <package>libmysqlclient18</package>
+            <package>mysql-community-client</package>
+            <package>mysql-common</package>
+            <package>mysql-community-server</package>
+        </mysql_5.6>
+        <mysql_5.7
+                description="MySQL 5.7 server"
+                class="Servers::sqld::mysql"
+                repository="http://repo.mysql.com/apt/debian/ stretch mysql-5.7"
+                repository_key_id="5072E1F5"
+                repository_key_srv="keyserver.ubuntu.com"
+                pinning_package="*"
+                pinning_pin="origin repo.mysql.com"
+                pinning_pin_priority="1001"
+                allow_switch="mysql_5.7,remote_server"
+        >
+            <package>libmariadbclient18</package>
+            <package>libmysqlclient20</package>
+            <package>mysql-community-client</package>
+            <package>mysql-common</package>
+            <package>mysql-community-server</package>
+        </mysql_5.7>
+        <mariadb_10.1
+                default="1"
+                description="MariaDB 10.1 server"
+                class="Servers::sqld::mariadb"
+                pinning_package="libmariadbclient18 mariadb-client-10.1 mariadb-common mariadb-server-core-10.1 mysql-common"
+                pinning_pin="release o=Debian,n=stretch"
                 pinning_pin_priority="1001"
                 allow_switch="mariadb_10.2,remote_server"
         >
             <package>libmariadbclient18</package>
-            <package>libmysqlclient18</package>
-            <package>libmysqlclient20</package>
             <package>mariadb-client-10.1</package>
             <package>mariadb-common</package>
             <package pre_install_tasks="/bin/mkdir -p /etc/mysql/mariadb.conf.d">mariadb-server-10.1</package>
@@ -377,70 +373,39 @@
         <mariadb_10.2
                 description="MariaDB 10.2 server"
                 class="Servers::sqld::mariadb"
-                repository="http://mirror.netcologne.de/mariadb/repo/10.2/ubuntu xenial main"
+                repository="http://mirror.netcologne.de/mariadb/repo/10.2/debian stretch main"
                 repository_key_id="0xF1656F24C74CD1D8"
                 repository_key_srv="keyserver.ubuntu.com"
                 pinning_package="*"
-                pinning_pin="release o=MariaDB,n=xenial"
+                pinning_pin="release o=MariaDB,n=stretch"
                 pinning_pin_priority="1001"
                 allow_switch="remote_server"
         >
-            <package>libmariadbclient18</package>
-            <package>libmysqlclient18</package>
-            <package>libmysqlclient20</package>
+            <package
+                    pinning_package="libmariadbclient18"
+                    pinning_pin="release o=Debian,n=stretch"
+                    pinning_pin_priority="1002"
+            >
+                libmariadbclient18
+            </package>
             <package>mariadb-client-10.2</package>
             <package>mariadb-common</package>
             <package pre_install_tasks="/bin/mkdir -p /etc/mysql/mariadb.conf.d">mariadb-server-10.2</package>
             <package>mysql-common</package>
         </mariadb_10.2>
-        <percona_5.5
-                description="Percona 5.5 server"
-                class="Servers::sqld::percona"
-                repository="http://repo.percona.com/apt xenial main"
-                repository_key_id="0x9334A25F8507EFA5"
-                repository_key_srv="keyserver.ubuntu.com"
-                pinning_package="libperconaserverclient18 libperconaserverclient18-dev percona-server-client-5.5 percona-server-common-5.5 percona-server-server-5.5"
-                pinning_pin="origin repo.percona.com"
-                pinning_pin_priority="1001"
-                allow_switch="percona_5.6,percona_5.7,remote_server"
-        >
-            <package>libmysqlclient20</package>
-            <package>libperconaserverclient18</package>
-            <package>mysql-common</package>
-            <package>percona-server-client-5.5</package>
-            <package>percona-server-common-5.5</package>
-            <package>percona-server-server-5.5</package>
-        </percona_5.5>
-        <percona_5.6
-                description="Percona 5.6 server"
-                class="Servers::sqld::percona"
-                repository="http://repo.percona.com/apt xenial main"
-                repository_key_id="0x9334A25F8507EFA5"
-                repository_key_srv="keyserver.ubuntu.com"
-                pinning_package="libperconaserverclient18.1 libperconaserverclient18.1-dev percona-server-client-5.6 percona-server-common-5.6 percona-server-server-5.6"
-                pinning_pin="origin repo.percona.com"
-                pinning_pin_priority="1001"
-                allow_switch="percona_5.7,remote_server"
-        >
-            <package>libmysqlclient20</package>
-            <package>mysql-common</package>
-            <package>libperconaserverclient18.1</package>
-            <package>percona-server-client-5.6</package>
-            <package>percona-server-common-5.6</package>
-            <package>percona-server-server-5.6</package>
-        </percona_5.6>
         <percona_5.7
                 description="Percona 5.7 server"
                 class="Servers::sqld::percona"
-                repository="http://repo.percona.com/apt xenial main"
+                repository="http://repo.percona.com/apt stretch main"
                 repository_key_id="0x9334A25F8507EFA5"
                 repository_key_srv="keyserver.ubuntu.com"
                 pinning_package="libperconaserverclient20 libperconaserverclient20-dev percona-server-client-5.7 percona-server-common-5.7 percona-server-server-5.7"
                 pinning_pin="origin repo.percona.com"
                 pinning_pin_priority="1001"
                 allow_switch="remote_server"
+                required_arch="amd64"
         >
-            <package>libmysqlclient20</package>
+            <package>libmariadbclient18</package>
             <package>libperconaserverclient20</package>
             <package>mysql-common</package>
             <package>percona-server-client-5.7</package>
@@ -448,15 +413,16 @@
             <package>percona-server-server-5.7</package>
         </percona_5.7>
         <remote_server
-                description="Remote MySQL server"
+                description="Remote SQL server"
                 class="Servers::sqld::remote"
-                pinning_package="libmysqlclient20 mysql-client-5.7 mysql-common"
-                pinning_pin="release o=Ubuntu,n=xenial"
+                pinning_package="libmariadbclient18 mariadb-client-10.1 mariadb-common mysql-common"
+                pinning_pin="release o=Debian,n=stretch"
                 pinning_pin_priority="1001"
-                allow_switch="mysql_5.7,mariadb_10.0,mariadb_10.1,mariadb_10.2,percona_5.5,percona_5.6,percona_5.7"
+                allow_switch="mariadb_10.1,mariadb_10.2,percona_5.7"
         >
-            <package>libmysqlclient20</package>
-            <package>mysql-client-5.7</package>
+            <package>libmariadbclient18</package>
+            <package>mariadb-common</package>
+            <package>mariadb-client-10.1</package>
             <package>mysql-common</package>
         </remote_server>
     </sql>
@@ -470,7 +436,8 @@
         <package>libdate-simple-perl</package>
         <package>libdatetime-perl</package>
         <package>libdbd-mysql-perl</package>
-        <package>libdbi-perl</package>
+        <package>libdbix-connector-perl</package>
+        <package>libdigest-md5-perl</package>
         <package>libemail-valid-perl</package>
         <package>libfile-copy-recursive-perl</package>
         <package>libfile-homedir-perl</package>
@@ -482,6 +449,7 @@
         <package>libnet-libidn-perl</package>
         <package>libsort-naturally-perl</package>
         <package>libtimedate-perl</package>
+        <package>libtry-tiny-perl</package>
         <package>libunix-mknod-perl</package>
         <package>libwww-perl</package>
         <package>libxml-parser-perl</package>
@@ -523,6 +491,7 @@
         <package>pbuilder</package>
         <package>pbzip2</package>
         <package>pigz</package>
+        <package>pixz</package>
         <package>ssh</package>
         <package>sudo</package>
         <package>tar</package>
