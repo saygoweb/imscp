@@ -81,8 +81,6 @@
             <package post_install_tasks="sh php_apcu.sh 5.6">php-apcu</package>
             <package>php-pear</package>
             <package>libapache2-mod-php5.6</package>
-            <package_conflict>php5-common</package_conflict>
-            <package_conflict>libapache2-mod-php5</package_conflict>
         </php5.6>
         <php7.0
                 description="PHP 7.0"
