@@ -293,7 +293,7 @@ function isValidDomainName($domainName)
         return false;
     }
 
-    if (preg_match("/([^a-z0-9\-.])/", $asciiDomainName, $m)) {
+    if (preg_match("/([^a-z0-9_\-.])/", $asciiDomainName, $m)) {
         $dmnNameValidationErrMsg = tr(
             'Domain name contains an invalid character: %s', $m[1]
         );
