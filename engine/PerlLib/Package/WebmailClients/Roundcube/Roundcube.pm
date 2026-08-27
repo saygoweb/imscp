@@ -42,8 +42,13 @@ use subs qw/
     predisableMail disableMail postdisableMail
 /;
 
+# Resolved from the saygoweb/roundcube fork declared as a vcs repository in
+# gui/composer.json. Upstream imscp/roundcube cannot be used: it pulls in
+# imscp/roundcube-plugin-installer, which Packagist only ever published as
+# Composer 1 builds. Composer derives 'dev-1.3.x-sgw' from the branch name
+# rather than the '1.3.x-dev' that a branch named '1.3.x' would give.
 my $packageVersionConstraint = $ENV{'IMSCP_PKG_DEVELOPMENT'}
-    ? '1.3.x-dev' : '1.3.x-dev';
+    ? 'dev-1.3.x-sgw' : 'dev-1.3.x-sgw';
 
 =head1 DESCRIPTION
 

@@ -21,6 +21,19 @@
     "source": "https://github.com/i-MSCP/imscp",
     "forum": "https://wwww.i-mscp.net/"
   },
+  "repositories": [
+    {
+      "type": "path",
+      "url": "composer-packages/composer-installers",
+      "options": {
+        "symlink": false
+      }
+    },
+    {
+      "type": "vcs",
+      "url": "https://github.com/saygoweb/roundcube.git"
+    }
+  ],
   "config": {
     "sort-packages": true,
     "discard-changes": true,
@@ -30,7 +43,11 @@
     "classmap-authoritative": false,
     "preferred-install": "dist",
     "process-timeout": 5000,
-    "use-include-path": false
+    "use-include-path": false,
+    "allow-plugins": {
+      "cweagans/composer-patches": true,
+      "imscp/composer-installers": true
+    }
   },
   "minimum-stability": "stable",
   "prefer-stable": true,
@@ -73,7 +90,7 @@
     "ext-zip": "*",
     "ext-zlib": "*",
     "algo26-matthias/idna-convert": "~2.1.0",
-    "cweagans/composer-patches": "~1.6.6",
+    "cweagans/composer-patches": "^1.7.3",
     "imscp/composer-installers": "^1.0",
     "league/flysystem": "^1.0",
     "pear/net_dns2": "~1.4.4",

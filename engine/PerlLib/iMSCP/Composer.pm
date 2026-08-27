@@ -302,7 +302,6 @@ sub install
             '--no-progress',
             '--no-ansi',
             '--no-interaction',
-            '--no-suggest',
             ( $nodev ? '--no-dev' : () ),
             ( $noautoloader ? '--no-autoloader' : () )
         ),
@@ -345,7 +344,6 @@ sub update
             '--no-progress',
             '--no-ansi',
             '--no-interaction',
-            '--no-suggest',
             ( $nodev ? '--no-dev' : () ),
             ( $noautoloader ? '--no-autoloader' : () ),
             @packages
