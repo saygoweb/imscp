@@ -618,13 +618,7 @@ sub _buildConf
                 my $ssl = ::setupGetQuestion( 'SERVICES_SSL_ENABLED' );
                 $cfgTpl .= "\nssl = $ssl\n";
 
-                # Fixme: Find a better way to guess libssl version
                 if ( $ssl eq 'yes' ) {
-                    unless ( `ldd /usr/lib/dovecot/libdovecot-login.so /usr/lib/dovecot/libdcrypt_openssl.so | grep libssl.so` =~ /libssl.so.(\d.\d)/ ) {
-                        error( "Couldn't guess libssl version against which Dovecot has been built" );
-                        return 1;
-                    }
-
                     if ( version->parse($self->{'config'}->{'DOVECOT_VERSION'}) >= version->parse('2.3.0')) {
                         $cfgTpl .= <<"EOF";
 ssl_min_protocol = TLSv1.2
@@ -632,6 +626,20 @@ ssl_cert = <$::imscpConfig{'CONF_DIR'}/imscp_services.pem
 ssl_key = <$::imscpConfig{'CONF_DIR'}/imscp_services.pem
 EOF
                     } else {
+                        # The deprecated ssl_protocols directive needs to know
+                        # which libssl Dovecot was built against; ssl_min_protocol
+                        # above does not, so the probe is only run here.
+                        #
+                        # Fixme: Find a better way to guess libssl version
+                        #
+                        # Both the 1.1 and 3 forms must be accepted: OpenSSL
+                        # dropped the minor component in its 3.x sonames, so
+                        # Debian 12 ships libssl.so.3 rather than libssl.so.1.1.
+                        unless ( `ldd /usr/lib/dovecot/libdovecot-login.so /usr/lib/dovecot/libdcrypt_openssl.so | grep libssl.so` =~ /libssl\.so\.(\d+(?:\.\d+)?)/ ) {
+                            error( "Couldn't guess libssl version against which Dovecot has been built" );
+                            return 1;
+                        }
+
                         $cfgTpl .= <<"EOF";
 ssl_protocols = @{[ version->parse( $1 ) >= version->parse( '1.1' ) ? '!SSLv3 !TLSv1 !TLSv1.1' : '!SSLv2 !SSLv3 !TLSv1 !TLSv1.1' ]}
 ssl_cert = <$::imscpConfig{'CONF_DIR'}/imscp_services.pem
