@@ -17,14 +17,12 @@ Vagrant.configure("2") do |config|
   # Disable automatic box update checking.
   config.vm.box_check_update = false
 
-  # Create a public network, which generally matched to bridged network.
-  # Bridged networks make the machine appear as another physical device on
-  # your network.
-  config.vm.network :public_network
+  # NOTE: :public_network is declared per-box rather than globally. The libvirt
+  # provider cannot bridge onto a wireless host interface, so the bullseye box
+  # uses libvirt's NAT network instead.
 
-  # Rsync i-MSCP folder into /usr/local/src/imscp Vagrant box directory
-  config.vm.synced_folder "../.", "/usr/local/src/imscp", type: "rsync",
-    rsync__exclude: "Vagrant/"
+  # Shared folder: host's parent directory to guest's /usr/local/src/imscp
+  config.vm.synced_folder "../.", "/usr/local/src/imscp", create: true
 
   ## Vagrant boxes definitions
 
@@ -32,12 +30,26 @@ Vagrant.configure("2") do |config|
   config.vm.define 'imscp_debian_stretch', autostart: true do |node|
       node.vm.box = "debian/stretch64"
 
+      # Create a public network, which generally matched to bridged network.
+      # Bridged networks make the machine appear as another physical device on
+      # your network.
+      node.vm.network :public_network
+
       # VirtualBox provider configuration
       node.vm.provider :virtualbox do |vb|
           vb.customize ["modifyvm", :id,
-            "--memory", "1024",
+            "--memory", "4096",
+            "--vram", "64",
             "--name", "imscp_debian_stretch",
             #"--natdnshostresolver1", "on"
+          ]
+          # Add empty IDE CD-ROM drive for Guest Additions
+          vb.customize ["storageattach", :id,
+            "--storagectl", "SATA Controller",
+            "--port", "2",
+            "--device", "0",
+            "--type", "dvddrive",
+            "--medium", "emptydrive"
           ]
       end
 
@@ -53,12 +65,26 @@ Vagrant.configure("2") do |config|
   config.vm.define "imscp_debian_buster", autostart: false do |node|
       node.vm.box = "debian/buster64"
 
+      # Create a public network, which generally matched to bridged network.
+      # Bridged networks make the machine appear as another physical device on
+      # your network.
+      node.vm.network :public_network
+
       # VirtualBox provider configuration
       node.vm.provider :virtualbox do |vb|
           vb.customize ["modifyvm", :id,
-            "--memory", "1024",
+            "--memory", "4096",
+            "--vram", "64",
             "--name", "imscp_debian_buster",
             #"--natdnshostresolver1", "on"
+          ]
+          # Add empty IDE CD-ROM drive for Guest Additions
+          vb.customize ["storageattach", :id,
+            "--storagectl", "SATA Controller",
+            "--port", "2",
+            "--device", "0",
+            "--type", "dvddrive",
+            "--medium", "emptydrive"
           ]
       end
 
@@ -70,16 +96,55 @@ Vagrant.configure("2") do |config|
       end
   end
 
+  # Debian 11.x/Bullseye
+  config.vm.define "imscp_debian_bullseye", autostart: false do |node|
+      node.vm.box = "debian/bullseye64"
+
+      # libvirt/KVM provider configuration
+      node.vm.provider :libvirt do |lv|
+          lv.memory = 4096
+          lv.cpus = 2
+          # Name the domain 'imscp_debian_bullseye' rather than '<dir>_<machine>'
+          lv.default_prefix = ""
+          # virtiofs synced folders require shared memory backing
+          lv.memorybacking :access, :mode => "shared"
+      end
+
+      # virtiofs replaces the VirtualBox shared folder used by the other boxes.
+      # It needs no NFS daemon on the host and no Guest Additions in the box.
+      node.vm.synced_folder "../.", "/usr/local/src/imscp",
+        type: "virtiofs", create: true
+
+      # Vagrant's implicit /vagrant folder would otherwise default to NFS,
+      # which prompts for sudo on every 'vagrant up'. The provisioner finds
+      # preseed.pl under the /usr/local/src/imscp mount instead.
+      node.vm.synced_folder ".", "/vagrant", disabled: true
+  end
+
   # Ubuntu Xenial Xerus (16.04)
   config.vm.define "imscp_ubuntu_xenial", autostart: false do |node|
       node.vm.box = "bento/ubuntu-16.04"
 
+      # Create a public network, which generally matched to bridged network.
+      # Bridged networks make the machine appear as another physical device on
+      # your network.
+      node.vm.network :public_network
+
       # VirtualBox provider configuration
       node.vm.provider :virtualbox do |vb|
           vb.customize ["modifyvm", :id,
-            "--memory", "1024",
+            "--memory", "4096",
+            "--vram", "64",
             "--name", "imscp_ubuntu_xenial",
             #"--natdnshostresolver1", "on"
+          ]
+          # Add empty IDE CD-ROM drive for Guest Additions
+          vb.customize ["storageattach", :id,
+            "--storagectl", "SATA Controller",
+            "--port", "2",
+            "--device", "0",
+            "--type", "dvddrive",
+            "--medium", "emptydrive"
           ]
       end
   end
@@ -87,14 +152,28 @@ Vagrant.configure("2") do |config|
     # Ubuntu Bionic Beaver (18.04)
     config.vm.define "imscp_ubuntu_bionic", autostart: false do |node|
         node.vm.box = "bento/ubuntu-18.04"
+
+        # Create a public network, which generally matched to bridged network.
+        # Bridged networks make the machine appear as another physical device on
+        # your network.
+        node.vm.network :public_network
   
         # VirtualBox provider configuration
         node.vm.provider :virtualbox do |vb|
             vb.customize ["modifyvm", :id,
-              "--memory", "1024",
+              "--memory", "4096",
+              "--vram", "64",
               "--name", "imscp_ubuntu_bionic",
               #"--natdnshostresolver1", "on"
             ]
+          # Add empty CD-ROM drive for Guest Additions
+          vb.customize ["storageattach", :id,
+            "--storagectl", "SATA Controller",
+            "--port", "1",
+            "--device", "0",
+            "--type", "dvddrive",
+            "--medium", "emptydrive"
+          ]
         end
     end
 

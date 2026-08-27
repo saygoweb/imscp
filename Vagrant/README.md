@@ -5,13 +5,20 @@ This directory contains all you need to setup a
 
 ## Requirements
 
-- VirtualBox or (LXC and vagrant-lxc plugin)
+- One of: libvirt/KVM and the vagrant-libvirt plugin, VirtualBox, or
+  (LXC and the vagrant-lxc plugin)
 - Vagrant ≥ 2.0.0
 - vagrant-reload Vagrant plugin
 - rsync
 
-Note that the documentation below assumes the
-[VirtualBox](https://www.vagrantup.com/docs/virtualbox/) Vagrant provider.
+The `imscp_debian_bullseye` box targets the
+[libvirt](https://vagrant-libvirt.github.io/vagrant-libvirt/) provider. The
+older boxes assume the
+[VirtualBox](https://www.vagrantup.com/docs/virtualbox/) provider.
+
+If your host has Secure Boot enabled, prefer libvirt/KVM: the `kvm` modules are
+in-tree and signed, whereas VirtualBox's DKMS modules are not and will refuse to
+load until you enroll a MOK key or disable Secure Boot in firmware.
 
 ## Vagrant boxes
 
@@ -21,6 +28,7 @@ The following Vagrant boxes are made available
 
 - Debian 9.x (Stretch): `imscp_debian_stretch` (VirtualBox, LXC)
 - Debian 10.x (Buster): `imscp_debian_buster` (VirtualBox, LXC)
+- Debian 11.x (Bullseye): `imscp_debian_bullseye` (libvirt/KVM)
 - Ubuntu 16.04 (Xenial Xerus): `imscp_ubuntu_xenial` (VirtualBox only)
 - Ubuntu 18.04 (Bionic Beaver): `imscp_ubuntu_bionic` (VirtualBox only)
 
@@ -30,6 +38,26 @@ The following Vagrant boxes are made available
 
 You can download latest Vagrant distribution at
 [Vagrant Download](https://www.vagrantup.com/downloads.html).
+
+### Setting up the libvirt/KVM provider
+
+For the `imscp_debian_bullseye` box, install the host packages and the
+`vagrant-libvirt` plugin:
+
+```shell
+sudo apt install libvirt-daemon-system libvirt-clients libvirt-dev \
+    qemu-system-x86 bridge-utils ebtables libxml2-dev libxslt1-dev zlib1g-dev
+sudo adduser "$USER" libvirt
+sudo adduser "$USER" kvm
+vagrant plugin install vagrant-libvirt
+```
+
+Log out and back in (or `newgrp libvirt`) so the new group membership takes
+effect, then check the daemon is reachable:
+
+```shell
+virsh -c qemu:///system list --all
+```
 
 ### Installing vagrant-reload Vagrant plugin
 
@@ -96,8 +124,18 @@ For instance, to create a `Debian Buster` Vagrant box, you must run:
 
 ```shell
 cd <imscp_archive_dir>/Vagrant
-vagrant up imscp_debian_Buster
+vagrant up imscp_debian_buster
 ```
+
+To create the `Debian Bullseye` box on libvirt:
+
+```shell
+cd <imscp_archive_dir>/Vagrant
+vagrant up imscp_debian_bullseye --provider=libvirt
+```
+
+The `public_network` interface will prompt you to pick a host device to bridge
+onto.
 
 Note that if you don't pass a name, a `Debian Stretch` Vagrant box will be
 created.

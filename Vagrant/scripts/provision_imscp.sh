@@ -14,13 +14,18 @@
 
 set -e
 
-# Create i-MSCP preseed file
-if [ ! -f /vagrant/preseed.pl ]; then
- echo "The i-MSCP preseed.pl file has not been found. Please create it first."
- exit 1
+# Find preseed file in possible locations
+if [ -f /vagrant/preseed.pl ]; then
+  PRESEED_FILE="/vagrant/preseed.pl"
+elif [ -f /usr/local/src/imscp/Vagrant/preseed.pl ]; then
+  PRESEED_FILE="/usr/local/src/imscp/Vagrant/preseed.pl"
+else
+  echo "The i-MSCP preseed.pl file has not been found. Please create it first."
+  exit 1
 fi
 
-head -n -2 /vagrant/preseed.pl > /tmp/preseed.pl
+rm -f /tmp/preseed.pl
+head -n -2 "$PRESEED_FILE" > /tmp/preseed.pl
 cat <<'EOT' >> /tmp/preseed.pl
 $::questions{'BASE_SERVER_IP'} = '0.0.0.0';
 

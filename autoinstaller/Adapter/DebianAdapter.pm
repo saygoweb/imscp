@@ -764,7 +764,7 @@ sub _processAptRepositories
         $fileC .= <<"EOF";
 
 deb $repository->{'repository'}
-deb-src $repository->{'repository'}
+# deb-src $repository->{'repository'}
 EOF
 
         # Hide "apt-key output should not be parsed (stdout is not a terminal)"
