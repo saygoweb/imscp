@@ -619,6 +619,10 @@
         >
             <package>proftpd-basic</package>
             <package>proftpd-mod-mysql</package>
+            <!-- Debian 13 split the TLS/SSL modules out of the core package
+                 into proftpd-mod-crypto; without it mod_tls.c cannot be
+                 loaded and proftpd refuses to start. -->
+            <package>proftpd-mod-crypto</package>
             <package_conflict>vsftpd</package_conflict>
         </proftpd>
         <vsftpd

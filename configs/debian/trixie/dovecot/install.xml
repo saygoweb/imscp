@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<install>
+    <folders>${SYSTEM_CONF}/dovecot</folders>
+    <folders>${SYSTEM_CONF}/dovecot/backup</folders>
+    <folders>${SYSTEM_CONF}/dovecot/working</folders>
+    <copy_config>${SYSTEM_CONF}/dovecot/dovecot.data.dist</copy_config>
+    <copy_config>${SYSTEM_CONF}/dovecot/dovecot.conf</copy_config>
+    <copy_config>${SYSTEM_CONF}/dovecot/dovecot-sql.conf</copy_config>
+    <copy_config>${SYSTEM_CONF}/dovecot/dovecot-managesieve.conf</copy_config>
+    <copy_config>${SYSTEM_CONF}/dovecot/quota-warning</copy_config>
+    <copy_config>${SYSTEM_CONF}/dovecot/sieve.default</copy_config>
+</install>

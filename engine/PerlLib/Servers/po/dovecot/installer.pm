@@ -619,7 +619,16 @@ sub _buildConf
                 $cfgTpl .= "\nssl = $ssl\n";
 
                 if ( $ssl eq 'yes' ) {
-                    if ( version->parse($self->{'config'}->{'DOVECOT_VERSION'}) >= version->parse('2.3.0')) {
+                    if ( version->parse($self->{'config'}->{'DOVECOT_VERSION'}) >= version->parse('2.4.0')) {
+                        # 2.4 renamed ssl_cert/ssl_key to
+                        # ssl_server_cert_file/ssl_server_key_file, which take
+                        # a path rather than the '<file' read syntax.
+                        $cfgTpl .= <<"EOF";
+ssl_min_protocol = TLSv1.2
+ssl_server_cert_file = $::imscpConfig{'CONF_DIR'}/imscp_services.pem
+ssl_server_key_file = $::imscpConfig{'CONF_DIR'}/imscp_services.pem
+EOF
+                    } elsif ( version->parse($self->{'config'}->{'DOVECOT_VERSION'}) >= version->parse('2.3.0')) {
                         $cfgTpl .= <<"EOF";
 ssl_min_protocol = TLSv1.2
 ssl_cert = <$::imscpConfig{'CONF_DIR'}/imscp_services.pem
