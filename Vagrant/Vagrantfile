@@ -146,6 +146,31 @@ Vagrant.configure("2") do |config|
       node.vm.synced_folder ".", "/vagrant", disabled: true
   end
 
+  # Debian 13.x/Trixie
+  config.vm.define "imscp_debian_trixie", autostart: false do |node|
+      node.vm.box = "debian/trixie64"
+
+      # libvirt/KVM provider configuration
+      node.vm.provider :libvirt do |lv|
+          lv.memory = 4096
+          lv.cpus = 2
+          # Name the domain 'imscp_debian_trixie' rather than '<dir>_<machine>'
+          lv.default_prefix = ""
+          # virtiofs synced folders require shared memory backing
+          lv.memorybacking :access, :mode => "shared"
+      end
+
+      # virtiofs replaces the VirtualBox shared folder used by the other boxes.
+      # It needs no NFS daemon on the host and no Guest Additions in the box.
+      node.vm.synced_folder "../.", "/usr/local/src/imscp",
+        type: "virtiofs", create: true
+
+      # Vagrant's implicit /vagrant folder would otherwise default to NFS,
+      # which prompts for sudo on every 'vagrant up'. The provisioner finds
+      # preseed.pl under the /usr/local/src/imscp mount instead.
+      node.vm.synced_folder ".", "/vagrant", disabled: true
+  end
+
   # Ubuntu Xenial Xerus (16.04)
   config.vm.define "imscp_ubuntu_xenial", autostart: false do |node|
       node.vm.box = "bento/ubuntu-16.04"

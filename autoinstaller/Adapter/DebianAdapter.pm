@@ -754,17 +754,40 @@ sub _processAptRepositories
     ) {
         my $escapedRepository = ref $repository eq 'HASH'
             ? $repository->{'repository'} : $repository;
-        $fileC =~ s/^\n?(?:#\s*)?deb(?:-src)?\s+\Q$escapedRepository\E.*?\n//gm;
+        $fileC =~ s/^\n?(?:#\s*)?deb(?:-src)?\s+(?:\[[^\]]*\]\s+)?\Q$escapedRepository\E.*?\n//gm;
     }
+
+    # Debian 13 removed apt-key. Where it is gone, each repository key is
+    # stored in its own keyring under /etc/apt/keyrings and referenced from
+    # the sources.list entry through the signed-by option, which is the
+    # documented replacement. Distributions that still ship apt-key keep the
+    # previous behaviour.
+    my $hasAptKey = iMSCP::ProgramFinder::find( 'apt-key' );
 
     # Add APT repositories
     for my $repository ( @{ $self->{'_dist'}->{'aptRepositoriesToAdd'} } ) {
-        next if $fileC =~ /^deb\s+$repository->{'repository'}/m;
+        next if $fileC =~ /^deb\s+(?:\[[^\]]*\]\s+)?\Q$repository->{'repository'}\E/m;
+
+        my $keyringFile;
+        unless ( $hasAptKey ) {
+            my ( $repositoryHost ) = $repository->{'repository'}
+                =~ m{^\s*\S+://([^/\s]+)};
+            $repositoryHost //= 'repository';
+            $repositoryHost =~ s/[^A-Za-z0-9._-]/_/g;
+            $keyringFile = "/etc/apt/keyrings/imscp-$repositoryHost.gpg";
+            iMSCP::Dir->new( dirname => '/etc/apt/keyrings' )->make( {
+                user  => $::imscpConfig{'ROOT_USER'},
+                group => $::imscpConfig{'ROOT_GROUP'},
+                mode  => 0755
+            } );
+        }
+
+        my $signedBy = defined $keyringFile ? "[signed-by=$keyringFile] " : '';
 
         $fileC .= <<"EOF";
 
-deb $repository->{'repository'}
-# deb-src $repository->{'repository'}
+deb $signedBy$repository->{'repository'}
+# deb-src $signedBy$repository->{'repository'}
 EOF
 
         # Hide "apt-key output should not be parsed (stdout is not a terminal)"
@@ -778,11 +801,22 @@ EOF
             # Add the repository key from the given key server
             $rs = execute(
                 [
-                    '/usr/bin/apt-key',
-                    'adv',
-                    '--recv-keys',
-                    '--keyserver', $repository->{'repository_key_srv'},
-                    $repository->{'repository_key_id'}
+                    ( $hasAptKey
+                        ? (
+                            '/usr/bin/apt-key', 'adv', '--recv-keys',
+                            '--keyserver',
+                            $repository->{'repository_key_srv'},
+                            $repository->{'repository_key_id'}
+                        )
+                        : (
+                            '/usr/bin/gpg', '--batch', '--no-default-keyring',
+                            '--keyring', $keyringFile,
+                            '--keyserver',
+                            $repository->{'repository_key_srv'},
+                            '--recv-keys',
+                            $repository->{'repository_key_id'}
+                        )
+                    )
                 ],
                 \my $stdout,
                 \my $stderr
@@ -817,8 +851,18 @@ EOF
             error( $stderr || 'Unknown error' ) if $rs;
             return $rs if $rs;
 
+            # gpg --dearmor writes a binary keyring and accepts a key that
+            # is already binary, so it covers both forms the URI may serve.
             $rs ||= execute(
-                [ '/usr/bin/apt-key', 'add', $keyFile ],
+                [
+                    ( $hasAptKey
+                        ? ( '/usr/bin/apt-key', 'add', $keyFile->filename())
+                        : (
+                            '/usr/bin/gpg', '--batch', '--yes', '--dearmor',
+                            '-o', $keyringFile, $keyFile->filename()
+                        )
+                    )
+                ],
                 \$stdout,
                 \$stderr
             );
