@@ -27,6 +27,12 @@ use strict;
 use warnings;
 use Carp;
 use Crypt::CBC;
+# NOTE: -blocksize must not be passed to Crypt::CBC->new(). Crypt::CBC 3.x
+# (Debian 12) validates its arguments and dies on unknown ones, and blocksize
+# was dropped there because it is a property of the cipher. Omitting it is
+# safe on 2.x as well: the resulting ciphertext is byte-identical for both
+# Crypt::Rijndael and Crypt::Blowfish, so previously encrypted data still
+# decrypts.
 use Crypt::Eksblowfish::Bcrypt ();
 use Digest::SHA ();
 use Digest::MD5 ();
@@ -508,7 +514,6 @@ sub _encryptCBC( $$$$ )
             -cipher      => $algorithm,
             -key         => $key,
             -keysize     => length $key,
-            -blocksize   => length $iv,
             -literal_key => 1,
             -iv          => $iv,
             -header      => 'none',
@@ -540,7 +545,6 @@ sub _decryptCBC( $$$$ )
         -cipher      => $algorithm,
         -key         => $key,
         -keysize     => length $key,
-        -blocksize   => length $iv,
         -literal_key => 1,
         -iv          => $iv,
         -header      => 'none',
