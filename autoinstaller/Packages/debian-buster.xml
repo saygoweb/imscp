@@ -76,14 +76,14 @@
             description="PHP version for customers"
             has_alternatives="1"
             pinning_package="*"
-            pinning_pin="origin packages.sury.org"
+            pinning_pin="origin mirror-bbg-5.internet1.de"
             pinning_pin_priority="1001"
-            repository="https://packages.sury.org/php/ buster main"
+            repository="https://mirror-bbg-5.internet1.de/sury-php-buster/ buster main"
             repository_conflict="http://packages.dotdeb.org"
             repository_key_uri="https://packages.sury.org/php/apt.gpg"
     >
         <php5.6
-                always_installed="1"
+                always_installed="0"
                 class="Servers::php"
                 description="PHP 5.6"
         >
@@ -121,7 +121,7 @@
             <package>libapache2-mod-php5.6</package>
         </php5.6>
         <php7.0
-                always_installed="1"
+                always_installed="0"
                 class="Servers::php"
                 description="PHP 7.0"
         >
@@ -161,7 +161,7 @@
             <package>php7.0-apcu-bc</package>
         </php7.0>
         <php7.1
-                always_installed="1"
+                always_installed="0"
                 class="Servers::php"
                 description="PHP 7.1"
         >
@@ -201,7 +201,7 @@
             <package>php7.1-apcu-bc</package>
         </php7.1>
         <php7.2
-                always_installed="1"
+                always_installed="0"
                 class="Servers::php"
                 description="PHP 7.2"
         >
@@ -240,7 +240,7 @@
             <package>php7.2-apcu-bc</package>
         </php7.2>
         <php7.3
-                always_installed="1"
+                always_installed="0"
                 class="Servers::php"
                 default="1"
                 description="PHP 7.3"

@@ -22,9 +22,8 @@ Vagrant.configure("2") do |config|
   # your network.
   config.vm.network :public_network
 
-  # Rsync i-MSCP folder into /usr/local/src/imscp Vagrant box directory
-  config.vm.synced_folder "../.", "/usr/local/src/imscp", type: "rsync",
-    rsync__exclude: "Vagrant/"
+  # Shared folder: host's parent directory to guest's /usr/local/src/imscp
+  config.vm.synced_folder "../.", "/usr/local/src/imscp", create: true
 
   ## Vagrant boxes definitions
 
@@ -35,9 +34,18 @@ Vagrant.configure("2") do |config|
       # VirtualBox provider configuration
       node.vm.provider :virtualbox do |vb|
           vb.customize ["modifyvm", :id,
-            "--memory", "1024",
+            "--memory", "4096",
+            "--vram", "64",
             "--name", "imscp_debian_stretch",
             #"--natdnshostresolver1", "on"
+          ]
+          # Add empty IDE CD-ROM drive for Guest Additions
+          vb.customize ["storageattach", :id,
+            "--storagectl", "SATA Controller",
+            "--port", "2",
+            "--device", "0",
+            "--type", "dvddrive",
+            "--medium", "emptydrive"
           ]
       end
 
@@ -56,9 +64,18 @@ Vagrant.configure("2") do |config|
       # VirtualBox provider configuration
       node.vm.provider :virtualbox do |vb|
           vb.customize ["modifyvm", :id,
-            "--memory", "1024",
+            "--memory", "4096",
+            "--vram", "64",
             "--name", "imscp_debian_buster",
             #"--natdnshostresolver1", "on"
+          ]
+          # Add empty IDE CD-ROM drive for Guest Additions
+          vb.customize ["storageattach", :id,
+            "--storagectl", "SATA Controller",
+            "--port", "2",
+            "--device", "0",
+            "--type", "dvddrive",
+            "--medium", "emptydrive"
           ]
       end
 
@@ -77,9 +94,18 @@ Vagrant.configure("2") do |config|
       # VirtualBox provider configuration
       node.vm.provider :virtualbox do |vb|
           vb.customize ["modifyvm", :id,
-            "--memory", "1024",
+            "--memory", "4096",
+            "--vram", "64",
             "--name", "imscp_ubuntu_xenial",
             #"--natdnshostresolver1", "on"
+          ]
+          # Add empty IDE CD-ROM drive for Guest Additions
+          vb.customize ["storageattach", :id,
+            "--storagectl", "SATA Controller",
+            "--port", "2",
+            "--device", "0",
+            "--type", "dvddrive",
+            "--medium", "emptydrive"
           ]
       end
   end
@@ -91,10 +117,19 @@ Vagrant.configure("2") do |config|
         # VirtualBox provider configuration
         node.vm.provider :virtualbox do |vb|
             vb.customize ["modifyvm", :id,
-              "--memory", "1024",
+              "--memory", "4096",
+              "--vram", "64",
               "--name", "imscp_ubuntu_bionic",
               #"--natdnshostresolver1", "on"
             ]
+          # Add empty CD-ROM drive for Guest Additions
+          vb.customize ["storageattach", :id,
+            "--storagectl", "SATA Controller",
+            "--port", "1",
+            "--device", "0",
+            "--type", "dvddrive",
+            "--medium", "emptydrive"
+          ]
         end
     end
 
