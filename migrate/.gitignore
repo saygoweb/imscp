@@ -1,0 +1,7 @@
+# Never commit secrets or captured state
+secrets.sh
+preseed.local.pl
+dump/
+*.sql
+*.sql.gz
+*.tar.gz
