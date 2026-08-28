@@ -568,11 +568,14 @@
                 description="Courier"
         >
             <package>courier-authlib-mysql</package>
+            <!-- courier-imap-ssl and courier-pop-ssl were merged into
+                 courier-imap and courier-pop, which carry
+                 'Replaces: courier-imap-ssl' rather than providing it, so
+                 asking for them by name fails. SSL support is built in. -->
             <package>courier-imap</package>
-            <package>courier-imap-ssl</package>
             <package>courier-pop</package>
-            <package>courier-pop-ssl</package>
-            <package>libgamin0</package>
+            <!-- libgamin0 is gone in Debian 13, and courier-imap no longer
+                 depends on a file alteration monitor. -->
             <package>libsasl2-modules</package>
             <package>maildrop</package>
             <package_conflict>libsasl2-modules-sql</package_conflict>
