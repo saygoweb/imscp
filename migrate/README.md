@@ -72,12 +72,49 @@ It cannot be preseeded (the modules read `%::imscpConfig` directly, never
 instead. `Modules/User.pm:120` then finds them via `getpwuid(admin_sys_uid)` and
 falls through to a no-op `usermod`.
 
-### Customer SQL users are not rebuilt
+### Customer SQL users are not rebuilt, and their passwords exist in only two places
 
-There is no `Modules/SqlUser.pm`. The `sql_user` table is panel metadata only —
-the actual MySQL users exist solely in the grant tables. Without `grants.sql`
-every customer application loses its database login while the panel still shows
-the user as present.
+i-MSCP does **not** store customer SQL passwords. `sql_user` holds `sqlu_name`,
+`sqlu_host` and `sqld_id` and nothing else — the `sqlu_pass` column was dropped
+(`DatabaseUpdate` `r247`, alongside `ftp_users.rawpasswd`) — and there is no
+`Modules/SqlUser.pm` that would recreate the accounts during a rebuild.
+
+So a customer's database password lives in exactly two places:
+
+1. MariaDB's grant tables, as a `mysql_native_password` hash, and
+2. the customer's own application config on disk (`wp-config.php` and friends).
+
+Nothing can look one up. If the accounts are not carried across, the only
+recovery is resetting each password from the panel and then editing every
+application config by hand.
+
+Carrying the **hash** is what makes this transparent: the password itself never
+changes, so a `wp-config.php` keeps working untouched. `10-dump-old.sh`
+therefore emits two files:
+
+| | |
+|---|---|
+| `users.sql` | `CREATE USER … IDENTIFIED VIA mysql_native_password USING '<hash>'` |
+| `grants.sql` | the privilege statements, from `SHOW GRANTS` |
+
+The accounts are generated explicitly rather than left to `SHOW GRANTS`,
+because its syntax for the password differs by version — 10.3 emits
+`IDENTIFIED BY PASSWORD`, 10.4+ emits `IDENTIFIED VIA … USING`. Reading the
+hash out of `mysql.user` and emitting one canonical form removes that
+dependency. On 10.3 a native-password account may carry its hash in `password`
+with an empty `plugin`, so whichever column is populated is used.
+
+Accounts *not* on a native password hash cannot be carried this way. They are
+written to `users-unportable.txt` and reported by both scripts rather than
+being discovered later.
+
+**Verified on MariaDB 11.8.6**, not assumed: a 10.3-style
+`GRANT … IDENTIFIED BY PASSWORD '*HASH'`, a `CREATE USER … IDENTIFIED BY
+PASSWORD`, and `IDENTIFIED VIA mysql_native_password USING` are all accepted;
+the plugin and hash are stored unchanged; and the original plaintext then
+authenticates over both TCP and the unix socket. `mysql_native_password` is
+still a core plugin in MariaDB 11.x — it is MySQL 8.4, not MariaDB, that
+removed it.
 
 ### `memory_limit` reverts from 512M to 64M
 
@@ -175,8 +212,9 @@ rsync -aHz /root/mig/ newbox:/root/mig/
 ```
 
 Dumps each database separately (the `mysql` schema cannot be carried from 10.3
-to 11.8), captures the grants, `imscp-db-keys`, `imscp.conf`, the Postfix
-support files, `passwd`/`group`, Let's Encrypt and the jailtime tree.
+to 11.8), captures the SQL accounts and their password hashes, the grants,
+`imscp-db-keys`, `imscp.conf`, the Postfix support files, `passwd`/`group`,
+Let's Encrypt and the jailtime tree.
 
 Take a rehearsal copy now and **run it again during the cutover window** with
 mail and web stopped.

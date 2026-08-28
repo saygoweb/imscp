@@ -41,6 +41,31 @@ for f in "$DUMP_DIR"/*.sql.gz; do
     if zcat "$f" | mysql "$db"; then echo "ok"; else echo "FAILED"; fi
 done
 
+if [ -f "$DUMP_DIR/users.sql" ]; then
+    log "Recreating SQL user accounts"
+    # Verified on MariaDB 11.8.6: a mysql_native_password hash carried over
+    # from 10.3 replays unchanged, the plugin is preserved, and the original
+    # plaintext still authenticates over both TCP and the unix socket. That is
+    # what keeps every customer's wp-config.php working untouched.
+    if [ "${DRY_RUN:-0}" != "1" ]; then
+        ufail=0
+        while IFS= read -r stmt; do
+            [ -n "${stmt// }" ] || continue
+            mysql -e "$stmt" 2>/dev/null || { warn "user failed: ${stmt:0:70}"; ufail=$((ufail+1)); }
+        done < "$DUMP_DIR/users.sql"
+        n=$(grep -c . "$DUMP_DIR/users.sql")
+        [ "$ufail" -eq 0 ] && ok "$n SQL account(s) recreated with their original passwords" \
+                           || warn "$ufail of $n account(s) failed"
+    fi
+else
+    warn "no users.sql - customer SQL passwords will NOT survive"
+fi
+
+if [ -s "$DUMP_DIR/users-unportable.txt" ]; then
+    warn "these accounts are not on a native password hash and need handling by hand:"
+    sed 's/^/      /' "$DUMP_DIR/users-unportable.txt" >&2
+fi
+
 if [ -f "$DUMP_DIR/grants.sql" ]; then
     log "Replaying SQL grants"
     # MariaDB still accepts IDENTIFIED BY PASSWORD '<hash>' and still ships

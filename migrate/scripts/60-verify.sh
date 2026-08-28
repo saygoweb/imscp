@@ -58,7 +58,7 @@ if mysql -N -B -e 'SELECT 1' >/dev/null 2>&1; then
     done
     # customer SQL users must exist as real grants, not just panel metadata
     meta=$(mysql -N -B -e "SELECT COUNT(DISTINCT sqlu_name) FROM imscp.sql_user" 2>/dev/null || echo 0)
-    real=$(mysql -N -B -e "SELECT COUNT(DISTINCT user) FROM mysql.user WHERE user NOT IN ('root','mariadb.sys','mysql','debian-sys-maint','imscp_user')" 2>/dev/null || echo 0)
+    real=$(mysql -N -B -e "SELECT COUNT(DISTINCT user) FROM mysql.user WHERE user NOT IN ('root','mysql','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','debian-sys-maint','imscp_user')" 2>/dev/null || echo 0)
     if [ "${meta:-0}" -gt 0 ] && [ "${real:-0}" -ge "${meta:-0}" ]; then
         ok "customer SQL users: $real present for $meta in sql_user"
     else

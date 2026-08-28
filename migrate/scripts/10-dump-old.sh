@@ -29,18 +29,62 @@ mysql -N -B -e 'SHOW DATABASES' \
           | gzip -1 > "$DB/$db.sql.gz"
     done
 
-echo "==> Capturing SQL grants"
-# i-MSCP has no module that recreates customer SQL users: the sql_user table is
-# panel metadata only. Without these grants every customer application loses
-# its database login.
+echo "==> Capturing SQL users and grants"
+# i-MSCP does NOT store customer SQL passwords: sql_user holds only sqlu_name,
+# sqlu_host and sqld_id - the sqlu_pass column was dropped (DatabaseUpdate
+# r247), and there is no Modules/SqlUser.pm that would recreate the accounts.
+#
+# So the password exists in exactly two places: MariaDB's grant tables, as a
+# mysql_native_password hash, and the customer's own application config on
+# disk. Carrying the hash is what keeps a wp-config.php working unchanged.
+#
+# Two files, deliberately:
+#   users.sql   accounts + password hashes, generated explicitly
+#   grants.sql  privileges, from SHOW GRANTS
+#
+# The accounts are not left to SHOW GRANTS because its syntax for the password
+# differs across versions (10.3 emits IDENTIFIED BY PASSWORD, 10.4+ emits
+# IDENTIFIED VIA ... USING). Reading the hash out of mysql.user and emitting
+# one canonical form avoids depending on that. On 10.3 a native-password user
+# may carry the hash in `password` with an empty `plugin`, so take whichever
+# column is populated.
+mysql -N -B -e "
+    SELECT CONCAT(
+        'CREATE USER IF NOT EXISTS ', QUOTE(user), '@', QUOTE(host),
+        ' IDENTIFIED VIA mysql_native_password USING ',
+        QUOTE(COALESCE(NULLIF(authentication_string,''), NULLIF(password,''))), ';')
+    FROM mysql.user
+    WHERE user NOT IN ('root','mysql','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','debian-sys-maint')
+      AND user <> ''
+      AND COALESCE(NULLIF(authentication_string,''), NULLIF(password,'')) LIKE '*%'
+    " > "$DB/users.sql"
+echo "    $(grep -c . "$DB/users.sql") user account(s) with native password hashes"
+
+# Anything not on a native password hash cannot be carried this way - report it
+# rather than leaving it to be discovered later.
+mysql -N -B -e "
+    SELECT CONCAT(user,'@',host,'  plugin=',plugin)
+    FROM mysql.user
+    WHERE user NOT IN ('root','mysql','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','debian-sys-maint')
+      AND user <> ''
+      AND COALESCE(NULLIF(authentication_string,''), NULLIF(password,'')) NOT LIKE '*%'
+    " > "$DB/users-unportable.txt"
+if [ -s "$DB/users-unportable.txt" ]; then
+    echo "    !! $(grep -c . "$DB/users-unportable.txt") account(s) NOT on a native password hash:"
+    sed 's/^/       /' "$DB/users-unportable.txt"
+    echo "       these need handling by hand - see $DB/users-unportable.txt"
+fi
+
+# Privileges. The USAGE line repeats the password in some versions; it is
+# harmless on replay because users.sql has already created the account.
 mysql -N -B -e "
     SELECT CONCAT('SHOW GRANTS FOR ', QUOTE(user), '@', QUOTE(host), ';')
     FROM mysql.user
-    WHERE user NOT IN ('root','mysql.sys','mysql.session','debian-sys-maint')
+    WHERE user NOT IN ('root','mysql','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','debian-sys-maint')
       AND user <> ''" \
   | mysql -N -B \
   | sed 's/$/;/' > "$DB/grants.sql"
-echo "    $(grep -c ';' "$DB/grants.sql") grant statements"
+echo "    $(grep -c ';' "$DB/grants.sql") grant statement(s)"
 
 echo "==> Copying configuration that is not on the data volume"
 install -m 0640 /etc/imscp/imscp-db-keys "$ETC/imscp-db-keys"
