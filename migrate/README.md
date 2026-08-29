@@ -290,9 +290,20 @@ installed by hand, and every piece has to be placed by hand again.
 
 **Binaries.** `/usr/sbin/jailtime` and `/usr/sbin/jailtimed`, v1.0.5, go1.26.2,
 module `github.com/sgw/jailtime`, `vcs.revision
-624866fe41a22556f7890b10a3378307f8b8a4d8`. **The source is not on aws1** — it
-lives on the development machine. Build it there against the Trixie toolchain
-rather than copying the buster binaries across.
+624866fe41a22556f7890b10a3378307f8b8a4d8`.
+
+The source is **not** on aws1, but it is not lost either — it is at
+`git@github.com:saygoweb/jailtime.git`. Clone it and build against the Trixie
+toolchain rather than copying the buster binaries across.
+
+Note the recorded module path (`github.com/sgw/jailtime`) is an older name than
+the repository's current one, so do not assume `master` is what aws1 is
+running: check out the revision matching
+`624866fe41a22556f7890b10a3378307f8b8a4d8` if you want to reproduce it exactly,
+and take anything newer deliberately rather than by accident.
+
+Unlike `server-utils.git` and `blockhandler.git`, jailtime therefore needs no
+rescue before aws1 is decommissioned.
 
 **Everything it owns:**
 
@@ -509,7 +520,8 @@ order, because each step is a dependency of the next:
    `PATH` before jailtime starts;
 3. build and install `blockhandler` and `snivirtualproxy` with their configs,
    units and the shared logrotate entry;
-4. build jailtime on the development box, install the binaries, the
+4. clone jailtime from `git@github.com:saygoweb/jailtime.git` and build it for
+   Trixie, then install the binaries, the
    `/usr/local/lib/jailtime` wrappers, the unit and its drop-in, and the
    reconciled `/etc/jailtime` tree; then confirm `iptables-nft` really does
    accept `-m set --match-set` before trusting it;
