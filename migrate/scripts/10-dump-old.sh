@@ -17,17 +17,61 @@ ETC="$OUT/etc"
 [ "$(id -u)" -eq 0 ] || { echo "must run as root" >&2; exit 1; }
 mkdir -p "$DB" "$ETC"
 
+# --events makes mysqldump run SHOW EVENTS, which fails with
+#   ERROR 1577: Cannot proceed, because event scheduler is disabled
+# when the server was started with event_scheduler=DISABLED. (Plain OFF is
+# fine.) Probe it directly rather than guessing from the variable, and read
+# mysql.event to know whether omitting it would actually lose anything - that
+# table is readable whatever the scheduler is doing.
+EVENTS_OPT="--events"
+ev_count=$(mysql -N -B -e 'SELECT COUNT(*) FROM mysql.event' 2>/dev/null || echo '?')
+if ! mysqldump --events --no-data --no-create-info mysql >/dev/null 2>&1; then
+    EVENTS_OPT=""
+    if [ "$ev_count" = "0" ]; then
+        echo "==> Event scheduler is DISABLED; no events exist, dumping without --events"
+    else
+        echo "!!  Event scheduler is DISABLED and mysqldump cannot read events."
+        echo "!!  $ev_count row(s) in mysql.event will NOT be in these dumps."
+        echo "!!  Either restart MariaDB with --event-scheduler=OFF and re-run,"
+        echo "!!  or recreate them by hand on the new box. Saving the raw rows:"
+        mysqldump --no-create-info --skip-extended-insert mysql event \
+            > "$DB/mysql-event-rows.sql" 2>/dev/null \
+            && echo "!!  -> $DB/mysql-event-rows.sql" \
+            || echo "!!  -> could not save them either"
+    fi
+fi
+
 echo "==> Dumping databases to $DB"
 # Per-database, not --all-databases: the mysql system schema cannot be carried
 # from 10.3 to 11.8, and per-file dumps let you reload one customer alone.
-mysql -N -B -e 'SHOW DATABASES' \
-  | grep -vxE 'mysql|information_schema|performance_schema|sys' \
-  | while read -r db; do
-        printf '    %s\n' "$db"
-        mysqldump --single-transaction --quick --routines --triggers --events \
-                  --default-character-set=utf8mb4 "$db" \
-          | gzip -1 > "$DB/$db.sql.gz"
-    done
+#
+# --single-transaction gives a consistent snapshot for InnoDB only. Any MyISAM
+# tables are dumped without locking, so for the CUTOVER dump stop mail and web
+# first rather than relying on this.
+failed=0
+while read -r db; do
+    printf '    %-40s' "$db"
+    if mysqldump --single-transaction --quick --routines --triggers $EVENTS_OPT \
+                 --default-character-set=utf8mb4 "$db" 2>"$DB/.err" | gzip -1 > "$DB/$db.sql.gz"
+    then
+        printf 'ok  %s\n' "$(du -h "$DB/$db.sql.gz" | cut -f1)"
+    else
+        printf 'FAILED\n'
+        sed 's/^/        /' "$DB/.err" >&2
+        # A partial dump is worse than none: it would restore as truncated data.
+        rm -f "$DB/$db.sql.gz"
+        failed=$((failed+1))
+    fi
+done < <(mysql -N -B -e 'SHOW DATABASES' \
+         | grep -vxE 'mysql|information_schema|performance_schema|sys')
+rm -f "$DB/.err"
+
+if [ "$failed" -gt 0 ]; then
+    echo
+    echo "!!  $failed database(s) failed to dump. Fix the cause and re-run;"
+    echo "!!  do NOT migrate with them missing."
+    exit 1
+fi
 
 echo "==> Capturing SQL users and grants"
 # i-MSCP does NOT store customer SQL passwords: sql_user holds only sqlu_name,

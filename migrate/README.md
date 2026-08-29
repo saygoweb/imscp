@@ -217,7 +217,18 @@ to 11.8), captures the SQL accounts and their password hashes, the grants,
 Let's Encrypt and the jailtime tree.
 
 Take a rehearsal copy now and **run it again during the cutover window** with
-mail and web stopped.
+mail and web stopped. That matters for more than freshness:
+`--single-transaction` only gives a consistent snapshot for InnoDB, so any
+MyISAM tables are dumped unlocked.
+
+A failed dump deletes its own partial `.sql.gz` and stops the script rather
+than leaving truncated data to be restored later.
+
+aws1 runs with `event_scheduler=DISABLED`, which makes `mysqldump --events`
+fail with `ERROR 1577`. The script probes for this and drops `--events` when it
+cannot be used, reporting whether anything is actually lost by reading
+`mysql.event` directly — that table is readable whatever the scheduler is
+doing. On aws1 it is empty, so nothing is.
 
 ### 3–5. Prepare the new box
 
