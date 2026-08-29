@@ -151,8 +151,50 @@ tar -C /etc -czf "$OUT/letsencrypt.tar.gz" letsencrypt
 
 echo "==> Archiving jailtime and friends"
 tar -C /etc -czf "$OUT/jailtime.tar.gz" \
-    jailtime blockhandler snivirtualproxy cipwhois.conf iptocidr.conf 2>/dev/null || \
+    jailtime blockhandler snivirtualproxy \
+    cipwhois.conf iptocidr.conf php-fpm-site.conf 2>/dev/null || \
     echo "    (some paths absent - check the archive)"
+
+# The live /etc/jailtime/jail.yaml is root-only, and it is not settled whether
+# it includes the /home/cambell/jailtime working copy or the /etc one. Pull it
+# out on its own so the answer is in plain sight next to the archive.
+[ -f /etc/jailtime/jail.yaml ] && cp -a /etc/jailtime/jail.yaml "$ETC/jailtime-jail.yaml"
+
+echo "==> Archiving /usr/local and the jailtime binaries"
+# None of this is packaged and none of it is on the data volume. Only the venv
+# is excluded: it is rebuilt on the new box against python3.13, not carried.
+# server-utils' own .git is kept, so the archive restores as a usable checkout.
+tar -C / -czf "$OUT/usr-local.tar.gz" \
+    --exclude='usr/local/bin/server-utils/.venv' \
+    usr/local/bin usr/local/sbin usr/local/lib/jailtime \
+    usr/share/doc/jailtime usr/sbin/jailtime usr/sbin/jailtimed 2>/dev/null || \
+    echo "    (some paths absent - check the archive)"
+
+echo "==> Archiving the two source repos that exist only on aws1"
+# server-utils.git and blockhandler.git are bare, with no upstream. If these
+# are lost with the box, the tools in /usr/local/bin lose their history.
+if [ -d /home/cambell/src/sgw ]; then
+    tar -C /home/cambell/src/sgw -czf "$OUT/src-repos.tar.gz" \
+        server-utils.git blockhandler.git 2>/dev/null || \
+        echo "    (one or both absent - check the archive)"
+else
+    echo "    /home/cambell/src/sgw is gone - the bare repos are NOT captured"
+fi
+
+echo "==> Copying the systemd units and the loose bits of /etc"
+mkdir -p "$ETC/systemd"
+for u in jailtimed.service blockhandler.service snivirtualproxy.service; do
+    [ -e "/etc/systemd/system/$u" ] && cp -a "/etc/systemd/system/$u" "$ETC/systemd/"
+    [ -d "/etc/systemd/system/$u.d" ] && cp -a "/etc/systemd/system/$u.d" "$ETC/systemd/"
+done
+mkdir -p "$ETC/logrotate.d" "$ETC/sysctl.d"
+[ -f /etc/logrotate.d/blockhandler ] && cp -a /etc/logrotate.d/blockhandler "$ETC/logrotate.d/"
+cp -a /etc/sysctl.d/*.conf "$ETC/sysctl.d/" 2>/dev/null || true
+
+# What refreshes dshield-block.txt and cidr-block.txt is not in /etc/cron.d.
+crontab -l -u root > "$ETC/root.crontab" 2>/dev/null \
+    && echo "    root crontab: $(grep -cvE '^\s*(#|$)' "$ETC/root.crontab") entries" \
+    || echo "    (no root crontab)"
 
 echo
 echo "==> Done. Copy $OUT to the new box, e.g.:"
