@@ -514,6 +514,14 @@ Let's Encrypt, the jailtime tree, all of `/usr/local`, the `jailtimed`,
 tools read, root's crontab, and the two bare git repos that exist nowhere
 else.
 
+**Set `manage_etc_hosts: true` on the new box, as aws1 has it.** aws1 carries it
+in `/etc/cloud/cloud.cfg.d/01_debian_cloud.cfg`, so cloud-init regenerates
+`/etc/hosts` from its template on every boot and i-MSCP's entry never
+survived — which is why the problem below was invisible there. The Trixie
+image does not set it. Add
+`/etc/cloud/cloud.cfg.d/99-manage-etc-hosts.cfg` containing
+`manage_etc_hosts: true`, and the installer now leaves the file alone.
+
 **After i-MSCP has run on the new box, reach aws1 by IP, never by name.** The
 installer writes `0.0.0.0  aws1.saygoweb.com  aws1` into `/etc/hosts` (from
 `BASE_SERVER_IP`), sets the new box's hostname to `aws1`, and points the
