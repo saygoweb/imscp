@@ -34,19 +34,32 @@ remote_host=$(timeout 30 "${SSH[@]}" hostname 2>&1 | tail -1) \
 note "$(timeout 30 "${SSH[@]}" uptime 2>/dev/null | tail -1)"
 
 if [ "$MODE" = "check" ]; then
-    # Confirm the wrappers are allowlisted without actually running the dump.
-    # authprogs denies with a recognisable message, so a denial is
-    # distinguishable from the command being absent or failing.
-    for c in /root/mig/dump-for-migration /root/mig/send-migration-tar; do
-        out=$(timeout 30 "${SSH[@]}" "$c" </dev/null 2>&1 >/dev/null | head -1 || true)
-        case "$out" in
-            *"not allowed"*) bad "$c is NOT allowlisted in authprogs.conf" ;;
-            *)               ok  "$c is allowlisted" ;;
-        esac
-    done
-    [ "${FAILED:-0}" -eq 0 ] || die "add the rules from migrate/authprogs.conf.snippet"
-    log "Channel ready."
-    exit 0
+    # Probe send-migration-tar only, and only far enough to see it start. It is
+    # read-only, and closing the pipe early just SIGPIPEs tar on aws1.
+    #
+    # dump-for-migration is deliberately NOT probed. There is no way to ask
+    # authprogs whether a command is permitted without running it, and running
+    # this one starts a full database dump - which, under the timeout a probe
+    # needs, gets killed part-way and leaves db/ holding a mix of two runs.
+    # An earlier version of this script did exactly that.
+    out=$(timeout 30 "${SSH[@]}" /root/mig/send-migration-tar 2>&1 >/dev/null | head -1 || true)
+    case "$out" in
+        *"not allowed"*)
+            bad "/root/mig/send-migration-tar is NOT allowlisted in authprogs.conf" ;;
+        *"No such file"*|*"not found"*)
+            bad "/root/mig/send-migration-tar is allowlisted but not installed on aws1" ;;
+        *)
+            ok "/root/mig/send-migration-tar is allowlisted and installed" ;;
+    esac
+
+    if [ "${FAILED:-0}" -eq 0 ]; then
+        note "dump-for-migration is not probed: running it IS the dump."
+        note "Both rules go in the same authprogs section, so if the above passed"
+        note "it almost certainly does too - the real run confirms it either way."
+        log "Channel ready."
+        exit 0
+    fi
+    die "add the rules from migrate/authprogs.conf.snippet, and install the wrappers"
 fi
 
 if [ "$MODE" = "full" ]; then
@@ -75,6 +88,19 @@ if [ -f "$WORK/MANIFEST.sha256" ]; then
     fi
 else
     bad "no MANIFEST.sha256 - cannot verify the transfer"
+fi
+
+log "Dump integrity"
+bad_gz=0
+while IFS= read -r f; do
+    gzip -t "$f" 2>/dev/null || { bad "truncated: ${f#$WORK/}"; bad_gz=$((bad_gz+1)); }
+done < <(find "$WORK" -name '*.gz' 2>/dev/null)
+[ "$bad_gz" -eq 0 ] && ok "every .gz in $WORK is complete" \
+                    || bad "$bad_gz truncated archive(s) - re-run the dump"
+
+if compgen -G "$WORK/db.previous.*" >/dev/null 2>&1; then
+    warn "aws1 set an earlier dump aside as $(basename "$(echo "$WORK"/db.previous.* | head -1)")"
+    warn "that is the old run, not this one - delete it once you are satisfied"
 fi
 
 log "What arrived"

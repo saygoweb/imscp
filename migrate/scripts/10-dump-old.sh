@@ -41,6 +41,17 @@ if ! mysqldump --events --no-data --no-create-info mysql >/dev/null 2>&1; then
     fi
 fi
 
+# Start from an empty db/ every time. Without this a re-run leaves the previous
+# run's files in place, so the directory becomes a mix of dumps taken at
+# different moments - and a database dropped or renamed between runs keeps a
+# stale dump that would be restored as though it were current.
+if [ -n "$(ls -A "$DB" 2>/dev/null)" ]; then
+    prev="$OUT/db.previous.$(date +%Y%m%d-%H%M%S)"
+    echo "==> Moving the previous dump aside to $prev"
+    mv "$DB" "$prev"
+    mkdir -p "$DB"
+fi
+
 echo "==> Dumping databases to $DB"
 # Per-database, not --all-databases: the mysql system schema cannot be carried
 # from 10.3 to 11.8, and per-file dumps let you reload one customer alone.
@@ -54,7 +65,17 @@ while read -r db; do
     if mysqldump --single-transaction --quick --routines --triggers $EVENTS_OPT \
                  --default-character-set=utf8mb4 "$db" 2>"$DB/.err" | gzip -1 > "$DB/$db.sql.gz"
     then
-        printf 'ok  %s\n' "$(du -h "$DB/$db.sql.gz" | cut -f1)"
+        # mysqldump succeeding is not proof the file is whole: a kill between
+        # gzip's last write and its trailer leaves a truncated archive that
+        # restores silently as a partial database. Test it now, while there is
+        # still something to compare against.
+        if gzip -t "$DB/$db.sql.gz" 2>/dev/null; then
+            printf 'ok  %s\n' "$(du -h "$DB/$db.sql.gz" | cut -f1)"
+        else
+            printf 'TRUNCATED\n'
+            rm -f "$DB/$db.sql.gz"
+            failed=$((failed+1))
+        fi
     else
         printf 'FAILED\n'
         sed 's/^/        /' "$DB/.err" >&2
