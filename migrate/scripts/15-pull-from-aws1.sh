@@ -13,7 +13,17 @@
 cd "$(dirname "$0")" && . ./lib.sh
 need_root
 
-AWS1="${AWS1:-aws1.saygoweb.com}"
+# An IP, not the name, and deliberately so. Once i-MSCP has run here it writes
+#
+#     0.0.0.0  aws1.saygoweb.com  aws1
+#
+# into /etc/hosts (from BASE_SERVER_IP), sets this box's hostname to aws1, and
+# points the resolver at the local bind that is authoritative for saygoweb.com.
+# nsswitch consults files before dns, so from this box "aws1.saygoweb.com"
+# means 0.0.0.0 - itself. Every ssh below would then talk to the new box while
+# looking entirely normal, and the cutover dump would overwrite the migrated
+# database with a dump of itself.
+AWS1="${AWS1:-34.212.49.11}"
 SSH=(ssh -o BatchMode=yes -o ConnectTimeout=15 "$AWS1")
 
 MODE=full
@@ -26,11 +36,29 @@ esac
 
 FAILED=0
 
-log "Checking the channel to $AWS1"
+# Refuse to talk to ourselves, whatever $AWS1 resolves to.
+target_ip=$(getent ahostsv4 "$AWS1" 2>/dev/null | awk '{print $1; exit}')
+target_ip="${target_ip:-$AWS1}"
+case "$target_ip" in
+    0.0.0.0|127.*|::1) die "$AWS1 resolves to $target_ip - that is this box, not aws1" ;;
+esac
+for own in $(hostname -I 2>/dev/null); do
+    [ "$own" = "$target_ip" ] && die "$AWS1 resolves to $target_ip, which is one of this box's own addresses"
+done
+
+log "Checking the channel to $AWS1 ($target_ip)"
 remote_host=$(timeout 30 "${SSH[@]}" hostname 2>&1 | tail -1) \
     || die "cannot reach $AWS1 over ssh: $remote_host"
-[ "$remote_host" = "aws1" ] && ok "reached $remote_host" \
+# Both machines answer to "aws1" after the migration, so the hostname alone
+# proves nothing. The uptime does: aws1 has been up for months.
+[ "$remote_host" = "aws1" ] && ok "reached $remote_host at $target_ip" \
                             || warn "remote hostname is '$remote_host', expected aws1"
+remote_up=$(timeout 30 "${SSH[@]}" uptime 2>/dev/null | grep -oP 'up\s+\K[0-9]+(?=\s+days)' || true)
+if [ -n "${remote_up:-}" ] && [ "$remote_up" -gt 1 ]; then
+    ok "remote has been up $remote_up days - this is the old box"
+else
+    warn "remote uptime is under a day; confirm this really is aws1 and not the new box"
+fi
 note "$(timeout 30 "${SSH[@]}" uptime 2>/dev/null | tail -1)"
 
 if [ "$MODE" = "check" ]; then

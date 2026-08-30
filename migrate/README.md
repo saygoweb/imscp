@@ -514,6 +514,17 @@ Let's Encrypt, the jailtime tree, all of `/usr/local`, the `jailtimed`,
 tools read, root's crontab, and the two bare git repos that exist nowhere
 else.
 
+**After i-MSCP has run on the new box, reach aws1 by IP, never by name.** The
+installer writes `0.0.0.0  aws1.saygoweb.com  aws1` into `/etc/hosts` (from
+`BASE_SERVER_IP`), sets the new box's hostname to `aws1`, and points the
+resolver at the local bind that is now authoritative for `saygoweb.com`.
+`nsswitch` reads `files` before `dns`, so from the new box the name means
+*itself*. Both machines then answer to `aws1`, so a hostname check proves
+nothing either — `15-pull-from-aws1.sh` therefore defaults to `34.212.49.11`,
+refuses any target that resolves to a local address, and confirms the remote
+has been up for more than a day. Without that guard the cutover dump would
+quietly overwrite the migrated database with a dump of itself.
+
 Take a rehearsal copy now and **run it again during the cutover window** with
 mail and web stopped. That matters for more than freshness:
 `--single-transaction` only gives a consistent snapshot for InnoDB, so any
