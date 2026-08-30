@@ -78,26 +78,54 @@ log "Source $AWS1:$SRC  ->  $DST"
 note "mail is included: $SRC contains _mail/, which /var/mail/virtual points at"
 
 # --- channel check --------------------------------------------------------
-out=$(timeout 60 rsync "${RSYNC_FLAGS[@]}" --dry-run \
-        -e "ssh -o BatchMode=yes -o ConnectTimeout=15" \
-        "$AWS1:$SRC" "$DST" 2>&1 >/dev/null | head -3 || true)
-case "$out" in
-    *"not allowed"*)
-        bad "rsync is not allowlisted on aws1 for this exact command."
-        echo
-        echo "  Add these two lines to aws1's /root/.ssh/authprogs.conf, under the"
-        echo "  section for this box. Two, because --dry-run changes the request:"
-        echo
-        echo "      $remote_cmd"
-        echo "      ${remote_cmd/--server --sender -/--server --sender -n}"
-        echo
-        echo "  Both are sender-only and pinned to $SRC, so aws1 can be read from"
-        echo "  and never written to."
-        die "channel not ready"
-        ;;
-    *"Permission denied"*|*"Host key"*) bad "ssh to $AWS1 failed: $out"; die "channel not ready" ;;
-esac
-ok "rsync channel to aws1 is open"
+# Ask authprogs directly rather than starting a transfer to see whether it is
+# refused. Sending the exact command with stdin closed costs about a tenth of a
+# second either way: authprogs refuses it outright, or rsync --server starts,
+# reaches EOF before requesting a file list, and exits with code 12.
+#
+# The earlier version ran a real `rsync --dry-run` and read its stderr, which
+# was wrong twice over. Once allowlisted it would have walked the whole 199 GB
+# tree on the far side just to answer "yes"; and `timeout 60` would then have
+# killed it, leaving no output to match, so the check would fall through and
+# report the channel open because it had run out of time. Success by accident
+# is worse than no check.
+dryrun_cmd="${remote_cmd/--server --sender -/--server --sender -n}"
+
+probe_allowed() {
+    local cmd="$1" out
+    out=$(timeout 25 ssh -o BatchMode=yes -o ConnectTimeout=15 "$AWS1" "$cmd" \
+            </dev/null 2>&1 | head -2 || true)
+    case "$out" in
+        *"not allowed"*) return 1 ;;
+        *)               return 0 ;;
+    esac
+}
+
+if [ -n "$remote_cmd" ] && ! probe_allowed "$remote_cmd"; then
+    bad "rsync is not allowlisted on aws1 for this exact command."
+    echo
+    echo "  Add these two lines to aws1's /root/.ssh/authprogs.conf, under the"
+    echo "  section for this box. Two, because --dry-run changes the request:"
+    echo
+    echo "      $remote_cmd"
+    echo "      $dryrun_cmd"
+    echo
+    echo "  Both are sender-only and pinned to $SRC, so aws1 can be read from"
+    echo "  and never written to."
+    die "channel not ready"
+fi
+ok "transfer command is allowlisted on aws1"
+
+if [ -n "$dryrun_cmd" ] && ! probe_allowed "$dryrun_cmd"; then
+    # Only the dry run is blocked, so a real --go would work. Say so plainly
+    # rather than refusing outright.
+    warn "the --dry-run variant is NOT allowlisted; add it too:"
+    warn "    $dryrun_cmd"
+    [ "$MODE" = "dry" ] && die "cannot dry run without it"
+else
+    ok "dry-run command is allowlisted on aws1"
+fi
+
 [ "$MODE" = "check" ] && { log "Channel ready. Next: ./80-final-sync.sh (dry run)."; exit 0; }
 
 # --- the transfer ---------------------------------------------------------
