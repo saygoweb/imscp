@@ -154,6 +154,49 @@ hms() {
     printf '%dh %02dm %02ds' "$((s/3600))" "$(((s%3600)/60))" "$((s%60))"
 }
 
+# --- immutable domain roots ----------------------------------------------
+# i-MSCP sets the ext2 immutable flag on a customer's web directory when that
+# domain has web_folder_protection = yes. Root cannot create a file in such a
+# directory, so rsync's atomic update - write to a temp name, then rename -
+# fails with
+#
+#   mkstemp "/var/www/virtual/<domain>/.htpasswd.XXXXXX" failed:
+#   Operation not permitted (1)
+#
+# and rsync exits 23, which reads as "do not cut over" when nothing is actually
+# wrong with the data. Only the domain root carries the flag; htdocs and the
+# rest do not, so this affects the handful of files that sit directly in it -
+# .htpasswd and .htgroup.
+#
+# Clear the flag for the duration and put it back afterwards, restoring on the
+# way out however the script ends.
+IMMUTABLE_DIRS=()
+while IFS= read -r d; do
+    [ -n "$d" ] && IMMUTABLE_DIRS+=( "$d" )
+done < <(find "$DST" -maxdepth 1 -mindepth 1 -type d 2>/dev/null \
+         | while read -r d; do
+               case "$(lsattr -d "$d" 2>/dev/null | awk '{print $1}')" in
+                   *i*) printf '%s\n' "$d" ;;
+               esac
+           done)
+
+restore_immutable() {
+    local d
+    for d in ${IMMUTABLE_DIRS+"${IMMUTABLE_DIRS[@]}"}; do
+        chattr +i "$d" 2>/dev/null || warn "could not restore +i on $d"
+    done
+    [ "${#IMMUTABLE_DIRS[@]}" -gt 0 ] && note "restored +i on ${#IMMUTABLE_DIRS[@]} directory(ies)"
+}
+
+if [ "${#IMMUTABLE_DIRS[@]}" -gt 0 ] && [ "$MODE" = "go" ]; then
+    note "clearing +i on ${#IMMUTABLE_DIRS[@]} protected domain root(s) for the transfer:"
+    for d in "${IMMUTABLE_DIRS[@]}"; do note "    $(basename "$d")"; done
+    trap restore_immutable EXIT
+    for d in "${IMMUTABLE_DIRS[@]}"; do
+        chattr -i "$d" || die "could not clear +i on $d"
+    done
+fi
+
 started=$(date +%s)
 log "rsync started $(date -Is)"
 
@@ -163,11 +206,21 @@ timeout 21600 rsync "${args[@]}" -e "ssh -o BatchMode=yes" "$AWS1:$SRC" "$DST" |
 elapsed=$(( $(date +%s) - started ))
 log "rsync finished $(date -Is) - wall clock $(hms "$elapsed")"
 
-if [ "$rc" -eq 124 ]; then
-    die "rsync hit the 6 hour timeout after $(hms "$elapsed") - do not cut over"
-elif [ "$rc" -ne 0 ]; then
-    die "rsync exited $rc after $(hms "$elapsed") - do not cut over until this is clean"
-fi
+case "$rc" in
+    0) ;;
+    124) die "rsync hit the 6 hour timeout after $(hms "$elapsed") - do not cut over" ;;
+    23|24)
+        # 23 partial transfer due to error, 24 files vanished while listing.
+        # Both are per-file and both are worth reading rather than ignoring:
+        # a file that vanished mid-run is usually a live service still writing,
+        # which means aws1 was not quiet.
+        bad "rsync exited $rc after $(hms "$elapsed") - some files were not transferred"
+        warn "read the errors above. Anything still failing with Operation not"
+        warn "permitted means a directory kept its +i flag; anything 'vanished'"
+        warn "means a service is still running on aws1."
+        ;;
+    *) die "rsync exited $rc after $(hms "$elapsed") - do not cut over until this is clean" ;;
+esac
 
 if [ "$MODE" = "dry" ]; then
     log "Dry run complete in $(hms "$elapsed")."
