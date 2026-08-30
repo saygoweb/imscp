@@ -480,7 +480,7 @@ Phase 9 is the cutover.
 | 5 | `scripts/40-restore-imscp-identity.sh` + `50-restore-db.sh` | new box |
 | 6 | run the installer with `preseed.pl` | new box |
 | 7 | rebuild `/usr/local`, jailtime and the Go services | new box, by hand |
-| 8 | `scripts/60-verify.sh` + `scripts/70-test-services.sh` | new box |
+| 8 | `scripts/80-final-sync.sh`, then `60-verify.sh` + `70-test-services.sh` | new box |
 | 9 | move the Elastic IP | AWS |
 
 Every script honours `DRY_RUN=1` to preview and `MIGRATE_YES=1` to skip
@@ -605,6 +605,36 @@ order, because each step is a dependency of the next:
    accept `-m set --match-set` before trusting it;
 5. clone `SGW_LetsEncrypt` into `gui/plugins/`, install the certbot snap, and
    add `panel-combine-ssl` as a certbot deploy hook.
+
+### 7b. Final data sync
+
+The volume attached to the new box is a snapshot. Everything customers changed
+on aws1 since it was taken is missing, so the cutover needs a delta:
+
+```sh
+./80-final-sync.sh --check    # confirm the channel, get the authprogs lines
+./80-final-sync.sh            # DRY RUN - what would change
+./80-final-sync.sh --go --delete
+```
+
+`/var/www/virtual/_mail` holds the maildirs, so **mail comes across in the same
+pass** — `/var/mail/virtual` is only a symlink into it.
+
+**Stop mail and web on aws1 first.** rsync builds its file list once; a message
+delivered after that is not in the run, and the customer never sees it.
+
+Two details that are not optional:
+
+- **`-x` (one-file-system).** aws1 bind-mounts `/var/log/apache2/<domain>` into
+  `/var/www/virtual/<domain>/logs/<domain>` — 220 of them, and the new box has
+  the same mounts. Without `-x`, rsync descends into every one and writes the
+  old box's Apache logs through this box's bind mounts.
+- **`--numeric-ids`.** `30-restore-users.sh` reproduced aws1's uids exactly;
+  the numbers are the thing to trust.
+
+`--delete` is opt-in and prompts, because a mistargeted run with it would be
+unrecoverable. The script refuses any target resolving to a local address, and
+requires `/var/www/virtual` to be a real mount before it writes anything.
 
 ### 8. Verify
 

@@ -19,6 +19,8 @@
 [ 16.147.33.237 34.212.49.11 ]
     /root/mig/dump-for-migration
     /root/mig/send-migration-tar
+    rsync --server --sender -lHogDtprxe.iLsfxCIvu --numeric-ids . /var/www/virtual/
+    rsync --server --sender -nlHogDtprxe.iLsfxCIvu --numeric-ids . /var/www/virtual/
 
 # Install the two wrappers on aws1 first:
 #
@@ -33,7 +35,22 @@
 #               only queries the migration needs.
 #   mysqldump   free arguments include --result-file, which writes anywhere as
 #               root.
-#   rsync       cannot be pinned safely here. The remote command it asks for
-#               encodes the client's flags and version, so an exact-match entry
-#               breaks on the next rsync upgrade. send-migration-tar replaces
-#               it with one stable spelling.
+#   mysqldump   free arguments include --result-file, which writes anywhere as
+#               root.
+#
+# The two rsync lines are pinned deliberately, and are the exception that
+# proves the point above. The remote command rsync asks for encodes the
+# client's flags and its version, so these hold only for rsync 3.4.1 on the new
+# box running exactly the invocation in 80-final-sync.sh - `-aHx
+# --numeric-ids`, with the second line being the same request with --dry-run.
+# Upgrade rsync there and aws1 will refuse the new string; 80-final-sync.sh
+# prints the command it is about to ask for, so that reads as a clear message
+# rather than a mystery.
+#
+# What they permit is narrow: --sender only, so aws1 can be read from and never
+# written to, and pinned to /var/www/virtual/ - which is also where the
+# maildirs live, under _mail/.
+#
+# -x matters as much as the rest. aws1 bind-mounts /var/log/apache2/<domain>
+# into /var/www/virtual/<domain>/logs/<domain>, 220 of them; without
+# one-file-system rsync descends into every one.
