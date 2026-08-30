@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+#
+# Fixed-purpose wrapper, installed on aws1 and allowlisted in authprogs.
+#
+#   install -m 0700 -o root -g root \
+#       aws1-send-migration-tar /root/mig/send-migration-tar
+#
+# Streams /root/mig to stdout as a tar. Pull it with:
+#
+#   ssh aws1.saygoweb.com /root/mig/send-migration-tar | tar -C /root -xf -
+#
+# Why not rsync: this authprogs matches commands EXACTLY, with no regex. rsync
+# over ssh asks the far end to run `rsync --server --sender -<flags> . <path>`,
+# and that flag blob varies with both the client's options and its version -
+# measured here, `-aHz` produces -lHogDtprze.iLsfxCIvu while `-az` produces
+# -logDtprze.iLsfxCIvu. Pinning one exact string would work until the day
+# either side's rsync is upgraded, and then fail during a cutover window. A
+# no-argument command that streams a tar has one spelling, forever.
+#
+# No compression: everything in /root/mig is already gzipped.
+#
+set -euo pipefail
+OUT="${MIG_OUT:-/root/mig}"
+
+[ "$(id -u)" -eq 0 ] || { echo "must run as root" >&2; exit 1; }
+[ -d "$OUT" ] || { echo "$OUT does not exist - run dump-for-migration first" >&2; exit 1; }
+
+# stderr only, so it cannot corrupt the tar on stdout
+echo "aws1: streaming $(du -sh "$OUT" | cut -f1) from $OUT" >&2
+exec tar -C "$(dirname "$OUT")" -cf - "$(basename "$OUT")"

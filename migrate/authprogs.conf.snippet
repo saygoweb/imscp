@@ -1,0 +1,39 @@
+# ---------------------------------------------------------------------------
+# authprogs rules for the aws1 -> trixie migration.
+#
+# Append to /root/.ssh/authprogs.conf on aws1, then remove both lines once the
+# migration is done.
+#
+# Format is Bri Hatch's authprogs: a bracketed list of source IPs, then one
+# allowed command per line, matched EXACTLY - no regex, no shell
+# metacharacters. That constraint shapes everything below: each entry is a
+# no-argument wrapper script, because a command with arguments cannot be
+# matched loosely and a command with a fixed argument list cannot be reused.
+#
+# Both IPs are listed because the Elastic IP moves during the cutover: the new
+# box is 16.147.33.237 now and becomes 34.212.49.11 afterwards. Without the
+# second, a rule that worked all through the rehearsal would start being denied
+# at the one moment it matters.
+# ---------------------------------------------------------------------------
+
+[ 16.147.33.237 34.212.49.11 ]
+    /root/mig/dump-for-migration
+    /root/mig/send-migration-tar
+
+# Install the two wrappers on aws1 first:
+#
+#   cd /home/cambell/imscp/migrate/scripts
+#   sudo install -m 0700 -o root -g root aws1-dump-for-migration  /root/mig/dump-for-migration
+#   sudo install -m 0700 -o root -g root aws1-send-migration-tar  /root/mig/send-migration-tar
+#
+# Deliberately NOT added:
+#
+#   mysql       `mysql -e '<sql>'` is arbitrary SQL as root - every customer
+#               database readable and writable. dump-for-migration runs the
+#               only queries the migration needs.
+#   mysqldump   free arguments include --result-file, which writes anywhere as
+#               root.
+#   rsync       cannot be pinned safely here. The remote command it asks for
+#               encodes the client's flags and version, so an exact-match entry
+#               breaks on the next rsync upgrade. send-migration-tar replaces
+#               it with one stable spelling.

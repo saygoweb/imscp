@@ -281,7 +281,64 @@ and paths that no longer exist:
 | `ipset-add-cidr` | Feeds `date time cidr` lines into `f2b-block_cidr` — same stale name. |
 | `update-php-fpm-pool` | Hardcodes `/etc/php/7.4/fpm/pool.d`. |
 | `set-cpu-quota.sh`, `log-php-cpu.sh`, `mkpark`, `htop-filter` | Carry as they are. |
-| `postanalyze`, `authprogs`, `authprogs.python` | **Python 2**, which Trixie does not have. `postanalyze` is superseded by `saygoweb/postfix-analyzer` (checked out at `/home/cambell/postfix-analyzer`); `authprogs` is not referenced by any `authorized_keys`. Drop all three. |
+| `postanalyze` | **Python 2**, which Trixie does not have. Superseded by `saygoweb/postfix-analyzer` (checked out at `/home/cambell/postfix-analyzer`). Drop. |
+| `authprogs`, `authprogs.python` | **Do not drop.** An earlier pass recorded these as unreferenced; they are not. authprogs gates root SSH on aws1 right now — confirmed by connecting: `hostname` and `uptime` succeed and everything else returns *"You're not allowed to run …"*. The earlier reading was made without root, so `/root/.ssh/authorized_keys` was not visible. See *Root SSH access* below. |
+
+### Root SSH access, and automating the dump
+
+Root SSH on aws1 is gated by **authprogs** (Bri Hatch, 2003) via a
+`command="…"` wrapper in `/root/.ssh/authorized_keys`, reading
+`/root/.ssh/authprogs.conf`. The format is a bracketed list of source IPs
+followed by one allowed command per line:
+
+```
+[ ALL ]
+    hostname
+    uptime
+```
+
+Matching is **exact** — no regex, no shell metacharacters. That single
+constraint decides the whole design of the automation below.
+
+**Two wrappers, not three tool allowlists.** `migrate/authprogs.conf.snippet`
+adds exactly two commands, both no-argument scripts:
+
+| Command | What it does |
+|---|---|
+| `/root/mig/dump-for-migration` | runs `10-dump-old.sh`, then writes `MANIFEST.sha256` inside the payload |
+| `/root/mig/send-migration-tar` | streams `/root/mig` to stdout as a tar |
+
+Install them on aws1 first:
+
+```sh
+cd /home/cambell/imscp/migrate/scripts
+sudo install -m 0700 -o root -g root aws1-dump-for-migration /root/mig/dump-for-migration
+sudo install -m 0700 -o root -g root aws1-send-migration-tar /root/mig/send-migration-tar
+```
+
+Then from the new box, `15-pull-from-aws1.sh` drives both ends:
+`--check` proves the channel and reports which commands are still denied,
+the default runs the dump and pulls it, and `--pull-only` re-fetches without
+re-dumping. It verifies the manifest after extraction and refuses to declare
+success on a checksum mismatch.
+
+**Why not allowlist `mysql`, `mysqldump` and `rsync` directly.** `mysql -e
+'<sql>'` is arbitrary SQL as root — every customer database, readable and
+writable. `mysqldump`'s `--result-file` writes anywhere as root. And `rsync`
+cannot be pinned safely at all under exact matching: rsync over ssh asks the
+far end to run `rsync --server --sender -<flags> . <path>`, where the flag blob
+encodes both the client's options and its version. Measured against aws1,
+`-aHz` produces `-lHogDtprze.iLsfxCIvu` and `-az` produces
+`-logDtprze.iLsfxCIvu`. An exact-match entry would work until either side's
+rsync is upgraded, then fail inside a cutover window. A no-argument command
+streaming a tar has one spelling, permanently.
+
+**On the new box.** authprogs is Python 2 and Trixie ships none, so the same
+protection cannot simply be copied across. It is a small script — port it to
+Python 3, or replace it with a `ForceCommand` equivalent — but decide
+deliberately rather than discovering after cutover that root SSH is
+unrestricted. Whatever is chosen, remove the two migration rules once the
+migration is done.
 
 ### jailtime
 
@@ -415,7 +472,7 @@ Phase 9 is the cutover.
 | # | Step | Where |
 |---|---|---|
 | 1 | `scripts/00-preflight.sh` | new box, read-only |
-| 2 | `scripts/10-dump-old.sh` | **aws1** |
+| 2 | `scripts/10-dump-old.sh`, or `scripts/15-pull-from-aws1.sh` to drive it remotely | **aws1** / new box |
 | 3 | `scripts/20-mount-data.sh` | new box |
 | 4 | `scripts/30-restore-users.sh` | new box |
 | 5 | `scripts/40-restore-imscp-identity.sh` + `50-restore-db.sh` | new box |

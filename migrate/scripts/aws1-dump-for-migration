@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+#
+# Fixed-purpose wrapper, installed on aws1 and allowlisted in authprogs.
+#
+#   install -m 0700 -o root -g root \
+#       aws1-dump-for-migration /root/mig/dump-for-migration
+#
+# It takes NO arguments deliberately. authprogs matches a command exactly, so a
+# no-argument entry point is the whole allowlist: there is nowhere to smuggle
+# an argument, and the rule cannot be widened by accident. Allowlisting
+# 'mysql' instead would permit `mysql -e '<any SQL>'` as root - every customer
+# database, readable and writable - which is far more than the migration needs.
+#
+# Change what runs by editing this file on aws1, not by relaxing authprogs.
+#
+set -euo pipefail
+
+REPO="${MIG_REPO:-/home/cambell/imscp}"
+OUT="${MIG_OUT:-/root/mig}"
+
+[ "$(id -u)" -eq 0 ] || { echo "must run as root" >&2; exit 1; }
+[ -x "$REPO/migrate/scripts/10-dump-old.sh" ] || {
+    echo "dump script not found at $REPO/migrate/scripts/10-dump-old.sh" >&2
+    echo "set MIG_REPO, or check out the migrate/2026-09 branch on aws1" >&2
+    exit 1
+}
+
+echo "aws1: starting migration dump at $(date -Is)"
+"$REPO/migrate/scripts/10-dump-old.sh" "$OUT"
+# A manifest travels inside the payload, so the transfer can be verified after
+# extraction without needing a second allowlisted command to ask for checksums.
+( cd "$OUT" && find . -type f ! -name MANIFEST.sha256 -print0 \
+    | sort -z | xargs -0 sha256sum > MANIFEST.sha256 )
+
+echo "aws1: dump finished at $(date -Is)"
+echo "aws1: $(grep -c . "$OUT/MANIFEST.sha256") files, $(du -sh "$OUT" | cut -f1)"
