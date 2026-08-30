@@ -15,6 +15,7 @@
 #
 cd "$(dirname "$0")" && . ./lib.sh
 need_root
+TMPCHK=$(mktemp -u); trap 'rm -f "$TMPCHK".*' EXIT
 
 [ -d "$DUMP_DIR" ] || die "no dumps at $DUMP_DIR - run 10-dump-old.sh on aws1 and copy $WORK across"
 count=$(find "$DUMP_DIR" -name '*.sql.gz' | wc -l)
@@ -80,6 +81,23 @@ if [ -f "$DUMP_DIR/grants.sql" ]; then
             mysql -e "$stmt" 2>/dev/null || { warn "grant failed: ${stmt:0:80}"; fails=$((fails+1)); }
         done < "$DUMP_DIR/grants.sql"
         run mysql -e "FLUSH PRIVILEGES"
+
+        # Every account named in grants.sql should have been created by
+        # users.sql. One that was not is an account the dump could not carry -
+        # its grants then fail, because MariaDB will not GRANT to a user that
+        # does not exist. Name them rather than leaving 2 lines of failure in
+        # the scrollback to be interpreted later.
+        if [ -f "$DUMP_DIR/users.sql" ]; then
+            grep -oP "TO \`\K[^\`]+(?=\`@)" "$DUMP_DIR/grants.sql" 2>/dev/null | sort -u > "$TMPCHK.g" || true
+            grep -oP "CREATE USER IF NOT EXISTS '\K[^']+" "$DUMP_DIR/users.sql" 2>/dev/null | sort -u > "$TMPCHK.u" || true
+            missing=$(comm -23 "$TMPCHK.g" "$TMPCHK.u")
+            if [ -n "$missing" ]; then
+                warn "granted but never created - no password could be carried:"
+                printf '      %s\n' $missing >&2
+                warn "decide per account whether to recreate it with a fresh password or drop it"
+            fi
+            rm -f "$TMPCHK.g" "$TMPCHK.u"
+        fi
         [ "$fails" -eq 0 ] && ok "all grants replayed" || warn "$fails grant(s) failed - review above"
     fi
 else

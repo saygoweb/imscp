@@ -30,7 +30,8 @@ package Listener::SayGoWeb::Postfix;
 
 use strict;
 use warnings;
-use iMSCP::Debug qw/ debug warning /;
+use iMSCP::Debug qw/ debug error warning /;
+use iMSCP::Execute 'execute';
 use iMSCP::EventManager;
 use Servers::mta;
 
@@ -138,9 +139,6 @@ iMSCP::EventManager->getInstance()->register(
             smtpd_data_restrictions     => [
                 'reject_multi_recipient_bounce', 'reject_unauth_pipelining'
             ],
-            # Deliberately empty on aws1: relay policy is expressed through
-            # smtpd_recipient_restrictions and the master.cf overrides.
-            smtpd_relay_restrictions    => [ '' ],
 
             # --- TLS -------------------------------------------------------
             smtpd_tls_cert_file         => [ $TLS_CERT ],
@@ -164,9 +162,42 @@ iMSCP::EventManager->getInstance()->register(
             rbl_reply_maps              => [ 'hash:$config_directory/dnsbl-reply-map' ]
         );
 
-        Servers::mta->factory()->postconf(
+        my $rs = Servers::mta->factory()->postconf(
             map { $_ => { action => 'replace', values => $p{$_} } } keys %p
         );
+        return $rs if $rs;
+
+        # smtpd_relay_restrictions is deliberately EMPTY on aws1: relay policy
+        # is carried by smtpd_recipient_restrictions and the master.cf
+        # overrides. It cannot go through postconf() above - an empty values
+        # list there means "keep whatever is set", and for a parameter never
+        # explicitly set that is Postfix's own default, which postconf prints
+        # as a conditional macro expression. Round-tripping that writes the
+        # literal expression into main.cf, after which every postconf run dies
+        # with "macro processing error" and Postfix will not start. Set it
+        # directly.
+        $rs = execute(
+            [ 'postconf', '-e', 'smtpd_relay_restrictions=' ],
+            \my $rout, \my $rerr
+        );
+        debug( $rout ) if length $rout;
+        error( $rerr || 'Unknown error' ) if $rs;
+        return $rs if $rs;
+
+        # rbl_reply_maps names a hash: table, so Postfix needs the .db, not the
+        # source. Nothing else rebuilds it - the file arrives from aws1 as
+        # plain text - and postfix starts happily without it, only to fail
+        # every lookup at run time.
+        for my $map ( '/etc/postfix/dnsbl-reply-map' ) {
+            next unless -f $map;
+            next if -f "$map.db" && ( stat "$map.db" )[9] >= ( stat $map )[9];
+            my $prs = execute( [ 'postmap', $map ], \my $stdout, \my $stderr );
+            debug( $stdout ) if length $stdout;
+            error( $stderr || 'Unknown error' ) if $prs;
+            return $prs if $prs;
+        }
+
+        0;
     },
     -99
 );

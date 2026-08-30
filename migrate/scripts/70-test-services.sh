@@ -71,7 +71,10 @@ tls_check() {
         # two so an expired-but-serving port is not reported as "unreachable".
         if grep -q 'CONNECTED' "$out"; then
             bad "$label ($host:$port) TLS established but certificate did NOT verify"
-            grep -m1 'verify error' "$out" | sed 's/^/        /'
+            # `|| true`: a non-matching grep under `set -e` would abort the
+            # whole run at the first failing endpoint, hiding every check after
+            # it - which is precisely when you most want the rest.
+            grep -m1 'verify error' "$out" | sed 's/^/        /' || true
         else
             bad "$label ($host:$port) no TLS - $(head -1 "$out")"
             return
@@ -80,10 +83,19 @@ tls_check() {
         ok "$label ($host:$port) TLS ok"
     fi
 
-    local subject expiry days san
-    subject=$(openssl x509 -noout -subject -in <(sed -n '/BEGIN CERT/,/END CERT/p' "$out") 2>/dev/null | sed 's/^subject=//')
-    expiry=$(openssl x509 -noout -enddate -in <(sed -n '/BEGIN CERT/,/END CERT/p' "$out") 2>/dev/null | cut -d= -f2)
-    san=$(openssl x509 -noout -ext subjectAltName -in <(sed -n '/BEGIN CERT/,/END CERT/p' "$out") 2>/dev/null | tr -d ' ' | tr ',' '\n' | grep -c "DNS:$host\$" || true)
+    # Every one of these may legitimately find nothing - an endpoint that
+    # served no certificate, or one that failed to verify. Under `set -e` a
+    # failed command substitution ends the script, so each is guarded: one bad
+    # endpoint must not hide the twenty checks that follow it.
+    local subject expiry days san pem
+    pem=$(sed -n '/BEGIN CERT/,/END CERT/p' "$out" 2>/dev/null || true)
+    if [ -z "$pem" ]; then
+        note "  no certificate presented"
+        return
+    fi
+    subject=$(printf '%s\n' "$pem" | openssl x509 -noout -subject 2>/dev/null | sed 's/^subject=//' || true)
+    expiry=$(printf '%s\n' "$pem" | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2 || true)
+    san=$(printf '%s\n' "$pem" | openssl x509 -noout -ext subjectAltName 2>/dev/null | tr -d ' ' | tr ',' '\n' | grep -c "DNS:$host\$" || true)
 
     if [ -n "$expiry" ]; then
         days=$(( ( $(date -d "$expiry" +%s) - $(date +%s) ) / 86400 ))
@@ -117,7 +129,14 @@ ehlo_caps() {
     local host="$1" port="$2" proto="${3:-}" addr; addr=$(connect_addr "$host")
     local args=( -connect "$addr:$port" -servername "$host" -quiet )
     [ -n "$proto" ] && args+=( -starttls "$proto" )
-    printf 'EHLO migration-test\r\nQUIT\r\n' | timeout 20 openssl s_client "${args[@]}" 2>/dev/null
+    # Pace the commands. Postfix 3.9 added smtpd_forbid_unauth_pipelining and
+    # 3.10 turns it on by default, so writing EHLO and QUIT in one go earns a
+    # "554 5.5.0 Error: SMTP protocol synchronization" and no capability list
+    # at all. aws1's Postfix 3.4 accepted it, which is exactly the kind of
+    # difference this script exists to catch - but in the client, not the
+    # server.
+    { printf 'EHLO migration-test\r\n'; sleep 2; printf 'QUIT\r\n'; sleep 1; } \
+        | timeout 25 openssl s_client "${args[@]}" 2>/dev/null
 }
 
 log "SMTP capabilities after TLS"
@@ -146,8 +165,9 @@ done
 log "POP3 and IMAP greetings"
 greet() {
     local host="$1" port="$2" addr; addr=$(connect_addr "$host")
-    printf 'a LOGOUT\r\n' | timeout 20 openssl s_client -connect "$addr:$port" \
-        -servername "$host" -quiet 2>/dev/null | head -1 | tr -d '\r'
+    { sleep 1; printf 'a LOGOUT\r\n'; sleep 1; } \
+        | timeout 20 openssl s_client -connect "$addr:$port" \
+          -servername "$host" -quiet 2>/dev/null | head -1 | tr -d '\r' || true
 }
 g=$(greet "$MAIL_HOST" 993); case "$g" in \*\ OK*) ok "IMAP: $g" ;; *) bad "IMAP greeting unexpected: ${g:-none}" ;; esac
 g=$(greet "$MAIL_HOST" 995); case "$g" in +OK*)   ok "POP3: $g" ;; *) bad "POP3 greeting unexpected: ${g:-none}" ;; esac

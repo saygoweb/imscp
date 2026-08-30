@@ -91,6 +91,7 @@ fi
 # --- the Postfix listener --------------------------------------------------
 log "Postfix listener"
 run mkdir -p /etc/imscp/listeners.d
-run install -m 0644 "../listeners/10_saygoweb_postfix.pl" \
-    /etc/imscp/listeners.d/10_saygoweb_postfix.pl
-ok "listener installed - main.cf and master.cf customisations will survive"
+for l in ../listeners/*.pl; do
+    run install -m 0644 "$l" "/etc/imscp/listeners.d/$(basename "$l")"
+done
+ok "$(ls ../listeners/*.pl | wc -l) listener(s) installed - the Postfix and Courier customisations will survive"

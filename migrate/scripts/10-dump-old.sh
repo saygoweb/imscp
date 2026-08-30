@@ -127,12 +127,22 @@ echo "    $(grep -c . "$DB/users.sql") user account(s) with native password hash
 
 # Anything not on a native password hash cannot be carried this way - report it
 # rather than leaving it to be discovered later.
+#
+# The COALESCE ends in '' deliberately. An account with no password at all
+# yields NULL, and `NULL NOT LIKE '*%'` is NULL rather than true - so without
+# the empty-string default such an account matches neither this query nor the
+# users.sql one above, and disappears without a word. That is exactly how
+# aws1's `migrator` (ALL PRIVILEGES, WITH GRANT OPTION) was missed.
 mysql -N -B -e "
-    SELECT CONCAT(user,'@',host,'  plugin=',plugin)
+    SELECT CONCAT(user,'@',host,
+                  '  plugin=', IF(plugin='', '(none)', plugin),
+                  '  password=', IF(COALESCE(NULLIF(authentication_string,''),
+                                             NULLIF(password,''), '')='',
+                                    'NONE', 'non-native'))
     FROM mysql.user
     WHERE user NOT IN ('root','mysql','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','debian-sys-maint')
       AND user <> ''
-      AND COALESCE(NULLIF(authentication_string,''), NULLIF(password,'')) NOT LIKE '*%'
+      AND COALESCE(NULLIF(authentication_string,''), NULLIF(password,''), '') NOT LIKE '*%'
     " > "$DB/users-unportable.txt"
 if [ -s "$DB/users-unportable.txt" ]; then
     echo "    !! $(grep -c . "$DB/users-unportable.txt") account(s) NOT on a native password hash:"
@@ -154,6 +164,17 @@ echo "    $(grep -c ';' "$DB/grants.sql") grant statement(s)"
 echo "==> Copying configuration that is not on the data volume"
 install -m 0640 /etc/imscp/imscp-db-keys "$ETC/imscp-db-keys"
 install -m 0644 /etc/imscp/imscp.conf    "$ETC/imscp.conf"
+
+# The panel certificate lives in /etc/imscp too, as <BASE_SERVER_VHOST>.pem -
+# key and fullchain concatenated. nginx refuses to start without it, and the
+# installer does not rebuild it from the PANEL_SSL_* inputs on an upgrade, so
+# it has to travel. /usr/local/bin/panel-combine-ssl regenerates it from the
+# certbot files if it is ever lost.
+for pem in /etc/imscp/*.pem; do
+    [ -e "$pem" ] || continue
+    install -m 0600 "$pem" "$ETC/$(basename "$pem")"
+    echo "    panel certificate: $(basename "$pem")"
+done
 
 # Postfix pieces the listener refers to, but does not itself contain
 mkdir -p "$ETC/postfix/tls"
