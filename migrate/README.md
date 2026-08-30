@@ -421,7 +421,7 @@ Phase 9 is the cutover.
 | 5 | `scripts/40-restore-imscp-identity.sh` + `50-restore-db.sh` | new box |
 | 6 | run the installer with `preseed.pl` | new box |
 | 7 | rebuild `/usr/local`, jailtime and the Go services | new box, by hand |
-| 8 | `scripts/60-verify.sh` | new box |
+| 8 | `scripts/60-verify.sh` + `scripts/70-test-services.sh` | new box |
 | 9 | move the Elastic IP | AWS |
 
 Every script honours `DRY_RUN=1` to preview and `MIGRATE_YES=1` to skip
@@ -530,12 +530,56 @@ order, because each step is a dependency of the next:
 
 ### 8. Verify
 
+Two scripts, checking different things. `60-verify.sh` inspects the box's
+internal state — files, database rows, units. `70-test-services.sh` checks
+that the services actually answer correctly over the network.
+
 ```sh
 ./60-verify.sh
+./70-test-services.sh --target <new box IP> --roundtrip
 ```
 
-Everything it checks can be checked with aws1 still serving, by pointing a
-hosts file at the new box. Also worth doing by hand:
+**`--target` is not optional before cutover.** DNS still points at aws1, so
+without it every check passes by testing the old box. With it, connections go
+to the given address while SNI and `Host` still carry the real names.
+
+`70-test-services.sh` covers:
+
+- TLS on 25, 587, 465, 993, 995, 443 (mail and main) and the panel on 8443,
+  checking the handshake, that the certificate's SAN covers the name it was
+  asked for, and how many days it has left.
+- The SMTP capability set, which is a direct regression test of the Postfix
+  listener: port 25 must **not** advertise `AUTH` while 587 and 465 must. The
+  Courier installer sets `smtpd_sasl_auth_enable` to `yes` and the listener
+  overrides it back at priority −99; if that ordering ever breaks, port 25
+  starts advertising AUTH and this catches it.
+- The Courier IMAP and POP3 greetings.
+- `https://arketec.com` (no WordPress) and `https://elijahshort.co.nz`
+  (WordPress). The second asserts WordPress markers are present in the rendered
+  HTML, which proves PHP-FPM ran rather than Apache just returning a file.
+- With `--roundtrip`, a full mail cycle through `test@inthefish.com`: submit on
+  587 with STARTTLS and AUTH, then poll IMAP until the message arrives. That
+  exercises submission, delivery into the migrated maildir
+  (`inthefish.com/test/` on the data volume) and IMAP retrieval in one go. The
+  password is prompted for, or taken from `TEST_MAIL_PASS`, and is passed to
+  curl through `--config` so it never appears in `ps`.
+
+Take a baseline from aws1 while it is still live, and compare:
+
+```sh
+./70-test-services.sh --baseline > /root/mig/baseline.txt
+```
+
+In baseline mode an unexpected HTTP status is recorded rather than failed,
+since the point is to capture what is true today.
+
+**One thing the baseline already showed:** `saygoweb.com` is proxied through
+Cloudflare, so a request to it never reaches Apache — a managed challenge comes
+back as 403. The script detects this and says so rather than reporting a
+failure. Only `--target` tests that origin. `arketec.com`,
+`elijahshort.co.nz`, `mail.saygoweb.com` and the panel are all direct.
+
+Also worth doing by hand:
 
 - log into the panel at `https://my.saygoweb.com:8443`
 - open a customer and read a mailbox password — proves the key survived

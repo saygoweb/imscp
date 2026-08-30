@@ -5,3 +5,4 @@ dump/
 *.sql
 *.sql.gz
 *.tar.gz
+baseline*.txt
