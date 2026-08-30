@@ -233,9 +233,11 @@ symlinks into it from `/usr/local/bin`:
 
 `cipwhois-offsite` and `mail-copy-folder` are in the repo but not linked.
 
-Its origin is `/home/cambell/src/sgw/server-utils.git` — **a bare repo on aws1
-itself, with no upstream**. `blockhandler.git` is the same. Push both somewhere
-off the box before it is decommissioned; aws1 holds the only copies.
+Its origin is `/home/cambell/src/sgw/server-utils.git`, a bare repo on aws1
+itself. Whether that is the only copy needs confirming: it is not among the 30
+repositories visible under `github.com/saygoweb`, but a private one would not
+be. If aws1 really does hold the only copy, push it somewhere off the box
+before it is decommissioned.
 
 The tools are Python 3 and import `ipwhois`, `dnspython`,
 `mysql-connector-python`, `requests` and `defusedxml`, installed on aws1 with
@@ -257,7 +259,7 @@ so port 80 is closed by default on aws1 and that has to stay true.
 
 | | Source | Config | Unit |
 |---|---|---|---|
-| `blockhandler` | `/home/cambell/src/sgw/blockhandler.git` (bare, on aws1) | `/etc/blockhandler/config.yml` | `blockhandler.service` |
+| `blockhandler` | `github.com/saygoweb/blockhandler` (private; the bare repo on aws1 is a clone, not the origin) | `/etc/blockhandler/config.yml` | `blockhandler.service` |
 | `snivirtualproxy` | `github.com/saygoweb/snivirtualproxy` | `/etc/snivirtualproxy/config.yml` | `snivirtualproxy.service` |
 
 Both are go1.26.2 builds. `/etc/logrotate.d/blockhandler` rotates both logs and
@@ -282,7 +284,7 @@ and paths that no longer exist:
 | `update-php-fpm-pool` | Hardcodes `/etc/php/7.4/fpm/pool.d`. |
 | `set-cpu-quota.sh`, `log-php-cpu.sh`, `mkpark`, `htop-filter` | Carry as they are. |
 | `postanalyze` | **Python 2**, which Trixie does not have. Superseded by `saygoweb/postfix-analyzer` (checked out at `/home/cambell/postfix-analyzer`). Drop. |
-| `authprogs`, `authprogs.python` | **Do not drop.** An earlier pass recorded these as unreferenced; they are not. authprogs gates root SSH on aws1 right now — confirmed by connecting: `hostname` and `uptime` succeed and everything else returns *"You're not allowed to run …"*. The earlier reading was made without root, so `/root/.ssh/authorized_keys` was not visible. See *Root SSH access* below. |
+| `authprogs` | **Do not drop.** An earlier pass recorded this as unreferenced; it is not. authprogs gates root SSH on aws1 right now — confirmed by connecting: `hostname` and `uptime` succeed and everything else returns *"You're not allowed to run …"*. That reading was made without root, so `/root/.ssh/authorized_keys` was not visible. It is **Perl**, so Trixie runs it unchanged. See *Root SSH access* below. |
 
 ### Root SSH access, and automating the dump
 
@@ -333,11 +335,10 @@ encodes both the client's options and its version. Measured against aws1,
 rsync is upgraded, then fail inside a cutover window. A no-argument command
 streaming a tar has one spelling, permanently.
 
-**On the new box.** authprogs is Python 2 and Trixie ships none, so the same
-protection cannot simply be copied across. It is a small script — port it to
-Python 3, or replace it with a `ForceCommand` equivalent — but decide
-deliberately rather than discovering after cutover that root SSH is
-unrestricted. Whatever is chosen, remove the two migration rules once the
+**On the new box.** authprogs is Perl, so it carries across as-is — Trixie
+ships perl 5.40. Copy the script, `/root/.ssh/authprogs.conf` and the
+`command="…"` wrapper in `/root/.ssh/authorized_keys` together; none of the
+three is any use without the other two. Remove the two migration rules once the
 migration is done.
 
 ### jailtime
@@ -359,8 +360,9 @@ running: check out the revision matching
 `624866fe41a22556f7890b10a3378307f8b8a4d8` if you want to reproduce it exactly,
 and take anything newer deliberately rather than by accident.
 
-Unlike `server-utils.git` and `blockhandler.git`, jailtime therefore needs no
-rescue before aws1 is decommissioned.
+jailtime, `blockhandler` and `snivirtualproxy` all live under
+`github.com/saygoweb`, so none of them needs rescuing before aws1 is
+decommissioned — `server-utils` is the only one still in question.
 
 **Everything it owns:**
 
@@ -568,8 +570,8 @@ perl /var/www/imscp/engine/setup/imscp-reconfigure -dv
 No script does this part; work through *The rest of the box* above, in this
 order, because each step is a dependency of the next:
 
-1. clone `server-utils` and `blockhandler` from the archives
-   `10-dump-old.sh` takes of the two bare repos, and push them somewhere off
+1. clone `server-utils` — from `github.com/saygoweb` if it is there, otherwise
+   from the bare-repo archive `10-dump-old.sh` takes, pushing it somewhere off
    aws1 while you are at it;
 2. lay down `/usr/local/bin/server-utils` and its twelve symlinks, install the
    Python dependencies into the repo's `.venv`, and restore `cipwhois.conf`,
@@ -697,6 +699,8 @@ Nothing secret is committed. `.gitignore` covers `secrets.sh`,
 - **Which `jail.yaml` is live.** See *The rest of the box* — the `/etc` copy
   could not be read here, and the `/home/cambell/jailtime` working copy has
   been edited since it was taken. Settle it from the root dump.
-- **The only copies of two repos are on aws1.** `server-utils.git` and
-  `blockhandler.git` are bare repos under `/home/cambell/src/sgw` with no
-  upstream. Push them to GitHub before the box is destroyed.
+- **Is `server-utils` backed up anywhere?** `blockhandler`, `snivirtualproxy`
+  and `jailtime` are all under `github.com/saygoweb`. `server-utils` is not
+  among the 30 repositories visible there, though a private one would not be
+  either. It is the last candidate for existing only as a bare repo on aws1, so
+  confirm before the box is destroyed. `10-dump-old.sh` archives it meanwhile.
