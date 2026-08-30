@@ -632,6 +632,11 @@ Two details that are not optional:
 - **`--numeric-ids`.** `30-restore-users.sh` reproduced aws1's uids exactly;
   the numbers are the thing to trust.
 
+The script reports wall clock for the transfer, and start and finish
+timestamps, because the cutover window is planned around that number. Time the
+dry run first: it walks the whole tree and lists what would move, so its
+duration is the floor for the real run rather than an estimate of it.
+
 `--delete` is opt-in and prompts, because a mistargeted run with it would be
 unrecoverable. The script refuses any target resolving to a local address, and
 requires `/var/www/virtual` to be a real mount before it writes anything.

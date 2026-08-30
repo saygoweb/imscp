@@ -114,11 +114,39 @@ else
     log "DRY RUN - nothing will be written. Add --go to transfer."
 fi
 
-timeout 21600 rsync "${args[@]}" -e "ssh -o BatchMode=yes" "$AWS1:$SRC" "$DST"
-rc=$?
-[ "$rc" -eq 0 ] || die "rsync exited $rc - do not cut over until this is clean"
+# Wall clock, because the cutover window is planned around it. `time` writes
+# its own format to stderr and would be swallowed by the redirections a caller
+# is likely to use, so measure it here and print it with everything else.
+#
+# `|| rc=$?` rather than a bare call: under `set -e` a failing rsync would end
+# the script at that line, and the die below - the one that says do not cut
+# over - would never run.
+hms() {
+    local s=$1
+    printf '%dh %02dm %02ds' "$((s/3600))" "$(((s%3600)/60))" "$((s%60))"
+}
 
-[ "$MODE" = "dry" ] && { log "Dry run complete."; exit 0; }
+started=$(date +%s)
+log "rsync started $(date -Is)"
+
+rc=0
+timeout 21600 rsync "${args[@]}" -e "ssh -o BatchMode=yes" "$AWS1:$SRC" "$DST" || rc=$?
+
+elapsed=$(( $(date +%s) - started ))
+log "rsync finished $(date -Is) - wall clock $(hms "$elapsed")"
+
+if [ "$rc" -eq 124 ]; then
+    die "rsync hit the 6 hour timeout after $(hms "$elapsed") - do not cut over"
+elif [ "$rc" -ne 0 ]; then
+    die "rsync exited $rc after $(hms "$elapsed") - do not cut over until this is clean"
+fi
+
+if [ "$MODE" = "dry" ]; then
+    log "Dry run complete in $(hms "$elapsed")."
+    note "The real run adds the time to move the bytes listed above, so treat"
+    note "this as the floor for the cutover window, not the estimate."
+    exit 0
+fi
 
 # --- after the real thing -------------------------------------------------
 log "Verifying"
@@ -132,7 +160,7 @@ d=$(ls /var/mail/virtual 2>/dev/null | wc -l)
 
 echo
 if [ "${FAILED:-0}" -eq 0 ]; then
-    log "Sync complete. Re-run 60-verify.sh and 70-test-services.sh, then move the Elastic IP."
+    log "Sync complete in $(hms "$elapsed"). Re-run 60-verify.sh and 70-test-services.sh, then move the Elastic IP."
 else
     die "$FAILED check(s) failed"
 fi
