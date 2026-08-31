@@ -181,17 +181,6 @@ iMSCP::EventManager->getInstance()->register(
             smtp_tls_session_cache_database  => [ 'btree:/var/lib/postfix/smtp_scache' ],
             smtpd_tls_session_cache_timeout  => [ '3600s' ],
 
-            # --- SASL config lookup ----------------------------------------
-            # Without this, Cyrus SASL on Debian 13 never finds
-            # /etc/postfix/sasl/smtpd.conf: it falls back to its own defaults,
-            # advertises the full mech list instead of the configured
-            # "plain login", uses auxprop rather than authdaemond, and every
-            # SMTP AUTH fails with "unable to canonify user and get auxprops".
-            # Buster's libsasl2 searched that directory on its own; Trixie's
-            # does not. aws1 therefore has no such setting and does not need
-            # one.
-            cyrus_sasl_config_path      => [ '/etc/postfix/sasl' ],
-
             # --- local policy ----------------------------------------------
             header_checks               => [ 'pcre:/etc/postfix/header_checks' ],
             rbl_reply_maps              => [ 'hash:$config_directory/dnsbl-reply-map' ]

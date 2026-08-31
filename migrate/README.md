@@ -685,6 +685,26 @@ both cause a failed unit if missed:
 
 ### 7d. Mail authentication on Trixie
 
+These were found here first — **this migration is the first use of i-MSCP on
+Debian 13** — and all but one are now fixed in i-MSCP itself rather than
+worked around in a listener. A control panel that needs a site-specific
+listener to deliver mail is not working; the split below is deliberate.
+
+**Fixed in core** (`Servers::po::courier::installer`, `debian-trixie.xml`):
+
+| Fault | Fix |
+|---|---|
+| courier-authlib 0.72 rejects a config that lost its `##NAME:` markers, failing *every* mail login | `_preserveAuthlibMarkers()` merges i-MSCP's values into the packaged file and keeps a pristine copy |
+| Cyrus SASL no longer finds `/etc/postfix/sasl` on its own, so all SMTP AUTH fails | `cyrus_sasl_config_path` set alongside the other SASL settings |
+| Restarting `courier-authdaemon` orphans the bind mount into the Postfix chroot, breaking SMTP AUTH until someone notices | stale-mount detection, plus a systemd drop-in that re-binds after the daemon starts |
+| Nothing writes `/var/log/mail.log`, so mail traffic silently counts as zero | `rsyslog` added to the requirements |
+
+**Left in the listener**, because it is genuinely site-specific: `postfix-pcre`,
+which only matters because SayGoWeb's `header_checks` is a `pcre:` map. Stock
+i-MSCP uses no pcre maps.
+
+
+
 Three faults, each of which alone stops every mail account from working. All
 three are handled by the listeners, but they are worth knowing because none of
 them produces an error that names the real cause.
