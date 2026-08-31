@@ -56,6 +56,36 @@ if mysql -N -B -e 'SELECT 1' >/dev/null 2>&1; then
         n=$(mysql -N -B -e "SELECT COUNT(*) FROM imscp.$tbl WHERE $col NOT IN ('ok','disabled')" 2>/dev/null || echo '?')
         [ "$n" = "0" ] && ok "$tbl: all ok" || bad "$tbl: $n row(s) not ok"
     done
+    # A grant is only useful if it names a database that exists. SHOW GRANTS
+    # escapes the _ wildcard in a database name with a backslash, and capturing
+    # that output through mysql's batch mode doubles it - so the grant lands on
+    # a name containing a literal backslash, which matches nothing. The account
+    # still authenticates, then fails every query with ERROR 1044. Counting
+    # users would not notice; this does.
+    # One backslash in mysql.db is CORRECT - it escapes the _ wildcard, so a
+    # grant on saygoweb_fa is stored as saygoweb\_fa. The corruption signature
+    # is TWO consecutive backslashes. CHAR(92) sidesteps three layers of
+    # escaping between bash, mysql and LIKE.
+    n=$(mysql -N -B --raw -e "
+        SELECT COUNT(*) FROM mysql.db
+        WHERE LOCATE(CONCAT(CHAR(92),CHAR(92)), Db) > 0" 2>/dev/null || echo '?')
+    [ "${n:-0}" = "0" ] && ok "no grants on backslash-mangled database names" \
+                        || bad "$n grant(s) name a doubled-backslash database - re-dump with mysql --raw"
+
+    n=$(mysql -N -B --raw -e "
+        SELECT COUNT(*) FROM information_schema.SCHEMATA s
+        LEFT JOIN mysql.db d
+          ON d.Db = s.SCHEMA_NAME OR d.Db = REPLACE(s.SCHEMA_NAME,'_','\\\\_')
+        WHERE s.SCHEMA_NAME NOT IN
+              ('mysql','information_schema','performance_schema','sys','imscp')
+          AND s.SCHEMA_NAME NOT LIKE 'imscp\\_orig%'
+          AND d.Db IS NULL" 2>/dev/null || echo '?')
+    if [ "${n:-0}" = "0" ]; then
+        ok "every customer database has at least one grantee"
+    else
+        warn "$n customer database(s) have no grantee - check they were like that on aws1 too"
+    fi
+
     # customer SQL users must exist as real grants, not just panel metadata
     meta=$(mysql -N -B -e "SELECT COUNT(DISTINCT sqlu_name) FROM imscp.sql_user" 2>/dev/null || echo 0)
     real=$(mysql -N -B -e "SELECT COUNT(DISTINCT user) FROM mysql.user WHERE user NOT IN ('root','mysql','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','debian-sys-maint','imscp_user')" 2>/dev/null || echo 0)

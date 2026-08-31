@@ -152,12 +152,20 @@ fi
 
 # Privileges. The USAGE line repeats the password in some versions; it is
 # harmless on replay because users.sql has already created the account.
+#
+# --raw on the reader is essential. In batch mode mysql escapes backslashes in
+# its output, and SHOW GRANTS uses one to escape the _ wildcard in a database
+# name - `saygoweb\_fa`. Without --raw that is written out doubled, and
+# replaying it grants access to a database whose name contains a literal
+# backslash, which does not exist. The account then authenticates perfectly and
+# fails every query with "ERROR 1044: Access denied to database". It hits every
+# customer database with an underscore in its name; here that was 46 grants.
 mysql -N -B -e "
     SELECT CONCAT('SHOW GRANTS FOR ', QUOTE(user), '@', QUOTE(host), ';')
     FROM mysql.user
     WHERE user NOT IN ('root','mysql','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','debian-sys-maint')
       AND user <> ''" \
-  | mysql -N -B \
+  | mysql -N -B --raw \
   | sed 's/$/;/' > "$DB/grants.sql"
 echo "    $(grep -c ';' "$DB/grants.sql") grant statement(s)"
 

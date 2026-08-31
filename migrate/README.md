@@ -661,6 +661,28 @@ duration is the floor for the real run rather than an estimate of it.
 unrecoverable. The script refuses any target resolving to a local address, and
 requires `/var/www/virtual` to be a real mount before it writes anything.
 
+### 7c. Settings that live outside the dump
+
+Two of aws1's `/etc` files are neither i-MSCP's nor carried by the scripts, and
+both cause a failed unit if missed:
+
+- **`/etc/chkrootkit/chkrootkit.conf`** — aws1 has `RUN_DAILY="false"`, set by
+  hand: i-MSCP runs chkrootkit weekly from its own cron, so Debian's daily job
+  is redundant. i-MSCP never writes this file, so the new box keeps Debian's
+  `RUN_DAILY="true"` and the daily job fails with 127, because it pipes its
+  report to `mail` and no MTA client is installed. Set it to `false` to match
+  aws1. Note the path moved: `/etc/chkrootkit.conf` on Buster,
+  `/etc/chkrootkit/chkrootkit.conf` on Trixie.
+
+- **Log rotation** was failing system-wide, and this one is worth
+  understanding. Trixie renamed the ProFTPD package to `proftpd-core`, which
+  ships its own `/etc/logrotate.d/proftpd-core`. i-MSCP was still installing
+  `proftpd-basic` alongside it, so logrotate saw two entries for
+  `/var/log/proftpd/proftpd.log`, called it a fatal duplicate, and
+  `logrotate.service` exited 1 — which stops **every** log on the box from
+  rotating, not just proftpd's. Fixed in `configs/debian/trixie/proftpd/install.xml`;
+  delete a stale `/etc/logrotate.d/proftpd-basic` if one is already there.
+
 ### 8. Verify
 
 Two scripts, checking different things. `60-verify.sh` inspects the box's

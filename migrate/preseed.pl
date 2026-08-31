@@ -84,10 +84,18 @@ ERR
     # 0.0.0.0 on aws1 (EC2) - services listen on all interfaces.
     BASE_SERVER_IP                      => '0.0.0.0',
 
-    # Ignored once the panel 'admin' row exists in the restored database
-    # (Package/FrontEnd.pm:1094). Set so a dry run against an empty database
-    # does not stall under --noprompt.
-    ADMIN_PASSWORD                      => 'ChangeMeBeforeDryRun1',
+    # MUST be empty for a migration, and this is not a style preference.
+    #
+    # Package/FrontEnd.pm:1628 upserts the master admin with
+    #
+    #     `admin_pass` = IF(LENGTH(?) > 0, ?, `admin_pass`)
+    #
+    # so an empty value preserves the password already in the restored
+    # database and any non-empty value REPLACES it. The setup dialog is
+    # skipped either way once the admin row exists (:1094), which makes a
+    # placeholder here look harmless while silently resetting the panel
+    # password - the failure only shows up when someone tries to log in.
+    ADMIN_PASSWORD                      => '',
 
     DEFAULT_ADMIN_ADDRESS               => 'cambell.prince@gmail.com',
 
