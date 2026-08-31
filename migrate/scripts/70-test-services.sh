@@ -261,7 +261,13 @@ if [ "$ROUNDTRIP" = "1" ]; then
     [ -n "$pass" ] || die "no password given"
 
     token="migration-test-$(date +%s)-$RANDOM"
-    addr=$(connect_addr "$MAIL_HOST")
+    # Connect to the target address but keep the real hostname in the URL, so
+    # the certificate still verifies. Talking to an IP directly would fail
+    # against a certificate issued for mail.saygoweb.com.
+    mail_resolve=()
+    if [ -n "$TARGET" ]; then
+        mail_resolve=( --resolve "$MAIL_HOST:587:$TARGET" --resolve "$MAIL_HOST:993:$TARGET" )
+    fi
 
     cat > "$TMP/msg.txt" <<MSG
 From: $TEST_MAILBOX
@@ -276,8 +282,8 @@ MSG
     # Credentials go in via --config on stdin so they never appear in ps(1).
     curl_auth() { printf 'user = "%s:%s"\n' "$TEST_MAILBOX" "$pass"; }
 
-    if curl_auth | timeout 60 curl -sS --config - \
-            --url "smtp://$addr:587" --ssl-reqd \
+    if curl_auth | timeout 60 curl -sS --config - "${mail_resolve[@]}" \
+            --url "smtp://$MAIL_HOST:587" --ssl-reqd \
             --mail-from "$TEST_MAILBOX" --mail-rcpt "$TEST_MAILBOX" \
             --upload-file "$TMP/msg.txt" >"$TMP/send.log" 2>&1
     then
@@ -291,8 +297,8 @@ MSG
         found=0
         for attempt in 1 2 3 4 5 6 7 8 9 10; do
             sleep 3
-            if curl_auth | timeout 30 curl -sS --config - \
-                    --url "imaps://$addr/INBOX?SUBJECT%20$token" \
+            if curl_auth | timeout 30 curl -sS --config - "${mail_resolve[@]}" \
+                    --url "imaps://$MAIL_HOST/INBOX?SUBJECT%20$token" \
                     2>/dev/null | grep -q '[0-9]'; then
                 ok "delivered and visible over IMAP after $((attempt*3))s"
                 found=1; break

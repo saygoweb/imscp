@@ -74,6 +74,30 @@ sub _zones
 ## main.cf
 #
 
+# header_checks above is a pcre: map, and Debian ships PCRE support for Postfix
+# in a separate package that i-MSCP does not ask for. Without it the map type
+# does not exist, and cleanup(8) rejects every message with
+#
+#   header_checks map lookup problem -- message not accepted, try again later
+#
+# which is a total mail outage that looks like a transient failure.
+iMSCP::EventManager->getInstance()->registerOne(
+    'beforeInstallPackages',
+    sub {
+        push @{ $_[0] }, 'postfix-pcre';
+        0;
+    }
+);
+
+# Keep it through an uninstall pass, for the same reason.
+iMSCP::EventManager->getInstance()->registerOne(
+    'beforeUninstallPackages',
+    sub {
+        @{ $_[0] } = grep { $_ ne 'postfix-pcre' } @{ $_[0] };
+        0;
+    }
+);
+
 iMSCP::EventManager->getInstance()->register(
     'afterMtaBuildConf',
     sub {
@@ -156,6 +180,17 @@ iMSCP::EventManager->getInstance()->register(
             smtpd_tls_session_cache_database => [ 'btree:/var/lib/postfix/smtpd_scache' ],
             smtp_tls_session_cache_database  => [ 'btree:/var/lib/postfix/smtp_scache' ],
             smtpd_tls_session_cache_timeout  => [ '3600s' ],
+
+            # --- SASL config lookup ----------------------------------------
+            # Without this, Cyrus SASL on Debian 13 never finds
+            # /etc/postfix/sasl/smtpd.conf: it falls back to its own defaults,
+            # advertises the full mech list instead of the configured
+            # "plain login", uses auxprop rather than authdaemond, and every
+            # SMTP AUTH fails with "unable to canonify user and get auxprops".
+            # Buster's libsasl2 searched that directory on its own; Trixie's
+            # does not. aws1 therefore has no such setting and does not need
+            # one.
+            cyrus_sasl_config_path      => [ '/etc/postfix/sasl' ],
 
             # --- local policy ----------------------------------------------
             header_checks               => [ 'pcre:/etc/postfix/header_checks' ],
