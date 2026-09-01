@@ -93,8 +93,12 @@ dryrun_cmd="${remote_cmd/--server --sender -/--server --sender -n}"
 
 probe_allowed() {
     local cmd="$1" out
+    # tr -d '\0' because when the command IS allowed, rsync --server starts and
+    # emits a few bytes of its binary protocol greeting before hitting EOF.
+    # Command substitution cannot hold NULs and bash warns about discarding
+    # them - harmless, but it looks like a fault in the middle of a cutover.
     out=$(timeout 25 ssh -o BatchMode=yes -o ConnectTimeout=15 "$AWS1" "$cmd" \
-            </dev/null 2>&1 | head -2 || true)
+            </dev/null 2>&1 | tr -d '\0' | head -2 || true)
     case "$out" in
         *"not allowed"*) return 1 ;;
         *)               return 0 ;;
