@@ -6,7 +6,14 @@ Documentation=man:named(8)
 After=network.target
 
 [Service]
+# Debian <= 11 ships the daemon defaults as /etc/default/bind9; Debian 12
+# renamed it to /etc/default/named along with the unit. Read both: each is
+# optional (-), and the later assignment wins where both somehow exist.
+# Losing this file silently empties $OPTIONS, which drops '-u bind' and
+# leaves named running as root without CAP_DAC_OVERRIDE - it can then no
+# longer read its own bind-owned rndc.key, killing the control channel.
 EnvironmentFile=-/etc/default/bind9
+EnvironmentFile=-/etc/default/named
 ExecStart=/usr/sbin/named -f $OPTIONS
 ExecReload=/usr/sbin/rndc reload
 ExecStop=/usr/sbin/rndc stop
