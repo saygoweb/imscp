@@ -716,6 +716,17 @@ sub _buildConf
             $tplContent =~ s%include\s+\Q"$self->{'config'}->{'BIND_CONF_DIR'}\E/bind.keys";\n%%;
         }
 
+        # Site-local include, for configuration i-MSCP does not manage: the
+        # TSIG key shared with a secondary is the usual case. Emitted only
+        # when the file is actually there, because BIND treats a missing
+        # include as fatal and would refuse to start at all - and this file
+        # is outside i-MSCP's management by design, so nothing guarantees a
+        # fresh install has one.
+        my $siteConfFile = $self->{'config'}->{'BIND_SITE_CONF_FILE'} // '';
+        my $siteInclude = length $siteConfFile && -f $siteConfFile
+            ? qq{include "$siteConfFile";\n} : '';
+        $tplContent =~ s/^[ \t]*\{BIND_SITE_CONF_INCLUDE\}[ \t]*\n/$siteInclude/gm;
+
         $rs = $self->{'events'}->trigger(
             'afterNamedBuildConf', \$tplContent, $tplName
         );

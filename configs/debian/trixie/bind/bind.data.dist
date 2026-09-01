@@ -29,6 +29,24 @@ PRIMARY_DNS =
 # Slave DNS(s) IP addresses
 SECONDARY_DNS =
 
+# Additional addresses allowed to transfer zones, beyond SECONDARY_DNS.
+#
+# SECONDARY_DNS is deliberately not the place for these. It also drives the
+# ns<N> records and their glue in every zone, so anything listed there is
+# published as a public nameserver - which is wrong for, say, a secondary's
+# VPC-internal address. Such an address belongs here instead: it reaches
+# allow-transfer without ever appearing in DNS.
+#
+# Same separators as SECONDARY_DNS: semicolon, comma or space.
+BIND_ALLOW_TRANSFER_EXTRA =
+
+# Optional site-local include for the main BIND conffile, for configuration
+# i-MSCP does not manage - a TSIG key shared with a secondary, for instance.
+#
+# Emitted into named.conf only when the named file exists, since BIND treats
+# a missing include as fatal and a fresh install has no reason to have one.
+BIND_SITE_CONF_FILE =
+
 # IPv6 support
 BIND_IPV6 =
 

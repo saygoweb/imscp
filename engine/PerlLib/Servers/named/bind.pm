@@ -762,13 +762,23 @@ sub _addDmnConfig
     };
 
     if ( $self->{'config'}->{'BIND_MODE'} eq 'master' ) {
-        if ( $self->{'config'}->{'SECONDARY_DNS'} ne 'no' ) {
-            $tags->{'SECONDARY_DNS'} = join(
-                '; ', split( /(?:[;,]| )/, $self->{'config'}->{'SECONDARY_DNS'} )
-            ) . '; localhost;';
-        } else {
-            $tags->{'SECONDARY_DNS'} = 'localhost;';
-        }
+        # Transfer sources for allow-transfer. SECONDARY_DNS first, then
+        # BIND_ALLOW_TRANSFER_EXTRA, which exists because SECONDARY_DNS is
+        # also what builds the ns<N> records and their glue further down:
+        # an address that may transfer but must not be published as a
+        # nameserver - a secondary reached over VPC-internal space, say -
+        # can only be expressed here.
+        my @xferSrcs;
+        push @xferSrcs, split(
+            /(?:[;,]| )/, $self->{'config'}->{'SECONDARY_DNS'}
+        ) if $self->{'config'}->{'SECONDARY_DNS'} ne 'no';
+        push @xferSrcs, split(
+            /(?:[;,]| )/,
+            $self->{'config'}->{'BIND_ALLOW_TRANSFER_EXTRA'} // ''
+        );
+        $tags->{'SECONDARY_DNS'} = join(
+            '', map { "$_; " } grep { length } @xferSrcs
+        ) . 'localhost;';
     } else {
         $tags->{'PRIMARY_DNS'} = join(
             '; ', split( /(?:[;,]| )/, $self->{'config'}->{'PRIMARY_DNS'} )
