@@ -756,6 +756,15 @@
         <package>pbuilder</package>
         <package>pbzip2</package>
         <package>perl</package>
+        <!--
+            i-MSCP's mail traffic accounting reads a plain text log:
+            Servers::mta::postfix::getTraffic() opens
+            $TRAFF_LOG_DIR/$MAIL_TRAFF_LOG with Tie::File and tracks a line
+            index across runs. Debian 13 ships no syslog daemon by default,
+            so without this nothing writes /var/log/mail.log and all mail
+            traffic silently counts as zero.
+        -->
+        <package>rsyslog</package>
         <package>pigz</package>
         <package>ssh</package>
         <package>sudo</package>
