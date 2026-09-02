@@ -2,7 +2,7 @@ BIND_USER = bind
 BIND_GROUP = bind
 
 BIND_CONF_DIR = /etc/bind
-BIND_CONF_DEFAULT_FILE = /etc/default/bind9
+BIND_CONF_DEFAULT_FILE = /etc/default/named
 BIND_CONF_FILE = /etc/bind/named.conf
 BIND_LOCAL_CONF_FILE = /etc/bind/named.conf.local
 BIND_OPTIONS_CONF_FILE = /etc/bind/named.conf.options
