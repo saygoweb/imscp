@@ -649,6 +649,14 @@ sub _updateAptSourceList
 {
     my ( $self ) = @_;
 
+    # Debian 13 cloud images ship deb822 .sources files and leave
+    # /etc/apt/sources.list holding nothing but a pointer comment, so the
+    # one-line parser below finds no repositories at all and the installer
+    # aborts with "Couldn't find any repository supporting main section".
+    # Where .sources files exist they are the authority, so handle them first.
+    my @deb822 = glob '/etc/apt/sources.list.d/*.sources';
+    return $self->_updateAptSourceListDeb822( \@deb822 ) if @deb822;
+
     my $file = iMSCP::File->new( filename => '/etc/apt/sources.list' );
     my $fileC = $file->get();
 
@@ -724,6 +732,131 @@ sub _updateAptSourceList
 
     $file->set( $fileC );
     $file->save();
+}
+
+=item _resolveAptUri( $uri )
+
+ Resolve an APT source URI to something wget can probe.
+
+ Debian's mirror method - mirror+file:///etc/apt/mirrors/<list> - names a file
+ holding candidate mirrors rather than an archive, and the cloud images use it
+ by default. Return the first usable mirror in that case, the URI unchanged
+ when it is already probeable, and the empty string when it is neither.
+
+ Param string $uri APT source URI
+ Return string Probeable URI, or an empty string
+
+=cut
+
+sub _resolveAptUri
+{
+    my ( undef, $uri ) = @_;
+
+    return $uri if $uri =~ m{^(?:https?|ftp)://};
+
+    if ( $uri =~ m{^mirror\+file:(?://)?(/.+)$} ) {
+        my $listFile = $1;
+        return '' unless -f $listFile;
+        open my $fh, '<', $listFile or return '';
+        while ( my $line = <$fh> ) {
+            chomp $line;
+            next if $line =~ /^\s*(?:#|$)/;
+            $line =~ s/\s.*$//; # drop any trailing mirror attributes
+            close $fh;
+            return $line =~ m{^(?:https?|ftp)://} ? $line : '';
+        }
+        close $fh;
+    }
+
+    '';
+}
+
+=item _updateAptSourceListDeb822( \@files )
+
+ Add required sections to deb822 (.sources) repositories that support them.
+
+ Same contract as _updateAptSourceList(), for the format Debian 12+ prefers
+ and Debian 13 cloud images ship exclusively. A section is only added once it
+ has been shown to exist for that suite, so a third-party repository carrying
+ main alone is left alone rather than being broken on the next apt-get update.
+
+ Param arrayref \@files deb822 source files
+ Return int 0 on success, other on failure
+
+=cut
+
+sub _updateAptSourceListDeb822
+{
+    my ( $self, $files ) = @_;
+
+    my %found = map { $_ => FALSE } @{ $self->{'repositorySections'} };
+
+    for my $filename ( @{ $files } ) {
+        my $file = iMSCP::File->new( filename => $filename );
+        my $fileC = $file->get();
+        next unless defined $fileC && length $fileC;
+
+        my $changed = FALSE;
+        my @stanzas = split /\n\s*\n/, $fileC;
+
+        for my $stanza ( @stanzas ) {
+            next unless $stanza =~ /^Types:\s*(.*)$/m && $1 =~ /\bdeb\b/;
+            next unless $stanza =~ /^URIs:\s*(\S+)/m;
+            my $uri = $1;
+            next unless $stanza =~ /^Suites:\s*(\S+)/m;
+            my $suite = $1;
+            next unless $stanza =~ /^Components:\s*(.*)$/m;
+            my $components = $1;
+
+            my $probeUri = $self->_resolveAptUri( $uri );
+
+            for my $section ( @{ $self->{'repositorySections'} } ) {
+                if ( grep ( $_ eq $section, split /\s+/, $components ) ) {
+                    $found{$section} = TRUE;
+                    next;
+                }
+
+                next unless length $probeUri;
+
+                my $rs = execute(
+                    [
+                        '/usr/bin/wget',
+                        '--prefer-family=IPv4',
+                        '--timeout=30',
+                        '--spider',
+                        "$probeUri/dists/$suite/$section/"
+                            =~ s{([^:])//}{$1/}gr
+                    ],
+                    \my $stdout,
+                    \my $stderr
+                );
+                debug( $stdout ) if length $stdout;
+                debug( $stderr || 'Unknown error' ) if $rs && $rs != 8;
+                next if $rs;
+
+                $stanza =~ s/^(Components:\s*.*)$/$1 $section/m;
+                $components .= " $section";
+                $found{$section} = TRUE;
+                $changed = TRUE;
+            }
+        }
+
+        next unless $changed;
+
+        $file->set( join( "\n\n", @stanzas ));
+        my $rs = $file->save();
+        return $rs if $rs;
+    }
+
+    for my $section ( @{ $self->{'repositorySections'} } ) {
+        next if $found{$section};
+        error( sprintf(
+            "Couldn't find any repository supporting %s section", $section
+        ));
+        return 1;
+    }
+
+    0;
 }
 
 =item _processAptRepositories( )
