@@ -1103,6 +1103,32 @@ sub postconf
             $stderr || 'Unknown error'
         );
 
+        # postconf(1) prints nothing for a parameter it does not know, and a
+        # user-defined parameter - a Postfix restriction class, say - is
+        # unknown until it exists in main.cf. The callback above is driven by
+        # that output, so for those parameters it never fires and the value is
+        # left as the hashref it arrived as. It then reaches main.cf
+        # stringified, as literally "HASH(0x...)", and Postfix answers every
+        # connection on the affected service with "451 4.3.5 Server
+        # configuration error".
+        #
+        # Resolve whatever the callback did not, from the spec itself.
+        for my $p ( keys %params ) {
+            next unless ref $params{$p} eq 'HASH';
+            my $spec = $params{$p};
+            my @values = ref $spec->{'values'} eq 'ARRAY'
+                ? grep { defined && length } @{ $spec->{'values'} } : ();
+            my $value = join ', ', @values;
+
+            if ( $value eq '' && !$spec->{'empty'} ) {
+                push @pToDel, $p;
+                delete $params{$p};
+                next;
+            }
+
+            $params{$p} = $value;
+        }
+
         if ( %params ) {
             my $cmd = [ 'postconf', '-e', '-c', $confdir ];
             while ( my ( $param, $value ) = each %params ) {
