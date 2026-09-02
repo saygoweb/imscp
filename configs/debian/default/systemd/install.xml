@@ -2,7 +2,18 @@
 <install>
     <folders mode="0755">${ROOT_CONF}/systemd/system</folders>
     <folders mode="0755">${ROOT_CONF}/tmpfiles.d</folders>
-    <copy_config if="'${NAMED_PACKAGE}' eq 'Servers::named::bind'" mode="0644">${ROOT_CONF}/systemd/system/bind9.service</copy_config>
+    <!--
+        Only where the distribution has no unit of its own. Debian 12+ ships
+        /usr/lib/systemd/system/named.service with Alias=bind9.service, so
+        /etc/systemd/system/bind9.service is that alias' symlink and ours
+        landed on the packaged unit. Ours is also wrong there: it names
+        /etc/default/bind9, which does not exist on those releases, so named
+        loses -u bind and every 'rndc reload' fails. kept="1" so a machine
+        that legitimately has ours does not have it removed from under it;
+        Servers::named::bind::installer clears the ones we should not have
+        written.
+    -->
+    <copy_config if="'${NAMED_PACKAGE}' eq 'Servers::named::bind' &amp;&amp; !-f '/usr/lib/systemd/system/named.service' &amp;&amp; !-f '/lib/systemd/system/named.service'" kept="1" mode="0644">${ROOT_CONF}/systemd/system/bind9.service</copy_config>
     <copy_config if="'${NAMED_PACKAGE}' eq 'Servers::named::bind'" mode="0644">${ROOT_CONF}/systemd/system/bind9-resolvconf.service</copy_config>
     <copy_config if="'${PO_PACKAGE}' eq 'Servers::po::courier'" mode="0644">${ROOT_CONF}/tmpfiles.d/courier-authdaemon.conf</copy_config>
     <copy_config mode="0644">${ROOT_CONF}/tmpfiles.d/imscp_panel.conf</copy_config>
