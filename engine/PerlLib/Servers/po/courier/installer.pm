@@ -31,7 +31,7 @@ use iMSCP::Boolean;
 use iMSCP::Config;
 use iMSCP::Crypt qw/ ALPHA64 decryptRijndaelCBC encryptRijndaelCBC randomStr /;
 use iMSCP::Database;
-use iMSCP::Debug qw/ debug error /;
+use iMSCP::Debug qw/ debug error warning /;
 use iMSCP::Dir;
 use iMSCP::EventManager;
 use iMSCP::Execute qw/ execute executeNoWait /;
@@ -210,6 +210,17 @@ sub configurePostfix
                 smtpd_sasl_type                        => {
                     action => 'replace',
                     values => [ 'cyrus' ]
+                },
+                # Tell Cyrus SASL where smtpd.conf actually is. Up to Debian
+                # 11 libsasl2 found /etc/postfix/sasl unaided; from Debian 12
+                # it does not, and Postfix silently falls back to SASL's own
+                # defaults - advertising every mechanism instead of the
+                # configured MECH_LIST, and using auxprop instead of
+                # authdaemond. Every SMTP AUTH then fails with "unable to
+                # canonify user and get auxprops".
+                cyrus_sasl_config_path                 => {
+                    action => 'replace',
+                    values => [ $self->{'config'}->{'SASL_CONF_DIR'} ]
                 },
                 smtpd_sasl_path                        => {
                     action => 'replace',
@@ -480,6 +491,13 @@ sub _buildConf
 
             $cfgTpl = process( $data, $cfgTpl );
 
+            if ( $conffile eq 'authmysqlrc' ) {
+                $rs = $self->_preserveAuthlibMarkers(
+                    \$cfgTpl, $cfgFiles{$conffile}->[0]
+                );
+                return $rs if $rs;
+            }
+
             $rs = $self->{'events'}->trigger(
                 'afterPoBuildConf', \$cfgTpl, $conffile
             );
@@ -572,7 +590,28 @@ sub _setupSASL
     $rs = addMountEntry(
         "$fields->{'fs_spec'} $fields->{'fs_file'} $fields->{'fs_vfstype'} $fields->{'fs_mntops'}"
     );
+
+    # isMountpoint() alone is not enough. courier-authdaemon declares
+    # RuntimeDirectory=, so systemd deletes and recreates the source directory
+    # on every restart - and the bind mount is then still a mountpoint, but
+    # attached to the old, unlinked inode. The socket vanishes from inside the
+    # Postfix chroot while everything still looks mounted, and every SMTP AUTH
+    # fails until someone notices. Treat a mount whose socket is not visible as
+    # stale and redo it.
+    my $socketInChroot = "$fields->{'fs_file'}/socket";
+    if ( isMountpoint( $fields->{'fs_file'} ) && !-S $socketInChroot ) {
+        debug( sprintf(
+            '%s is mounted but %s is not visible; remounting',
+            $fields->{'fs_file'}, $socketInChroot
+        ));
+        $rs ||= umount( $fields->{'fs_file'} );
+    }
+
     $rs ||= mount( $fields ) unless isMountpoint( $fields->{'fs_file'} );
+
+    # And keep it that way. Without this the mount is correct now and broken
+    # the next time anything restarts the authentication daemon.
+    $rs ||= $self->_installAuthdaemonMountDropIn( $fields );
 
     # Build Cyrus SASL smtpd.conf configuration file
 
@@ -911,6 +950,157 @@ sub _oldEngineCompatibility
     }
 
     0;
+}
+
+=item _preserveAuthlibMarkers( \$cfgTpl, $dest )
+
+ Keep the ##NAME: markers courier-authlib ships in its configuration files.
+
+ From courier-authlib 0.72, authdaemond refuses a configuration file that has
+ lost those markers, logging
+
+   marker line not found in <file> (probably forgot to run sysconftool after
+   an upgrade)
+
+ and then rejecting every authentication attempt: the module answers "REJECT -
+ try next module", and where authmysql is the only module that means every
+ mail login on the server fails. Debian 11 and earlier did not enforce it, so
+ replacing the file wholesale was harmless there and is not here.
+
+ i-MSCP builds this file from its own template, which has no markers. Merge the
+ generated values into the structure of the file already on disk - the
+ packaged one on a first install - and keep a pristine copy, since after the
+ first overwrite there is nothing left to learn the structure from.
+
+ Param scalarref \$cfgTpl Generated configuration
+ Param string $dest Destination path of the configuration file
+ Return int 0 on success, other on failure
+
+=cut
+
+sub _preserveAuthlibMarkers
+{
+    my ( undef, $cfgTpl, $dest ) = @_;
+
+    return 0 unless defined ${ $cfgTpl };
+    return 0 if ${ $cfgTpl } =~ /^##NAME:/m;
+
+    my $pristine = "$dest.imscp-pristine";
+    my $base;
+
+    for my $candidate ( $pristine, $dest ) {
+        next unless -f $candidate;
+        my $content = iMSCP::File->new( filename => $candidate )->get();
+        next unless defined $content && $content =~ /^##NAME:/m;
+        $base = $content;
+
+        unless ( -f $pristine ) {
+            my $file = iMSCP::File->new( filename => $pristine );
+            $file->set( $content );
+            $file->save() == 0 and $file->mode( 0640 );
+            debug( sprintf( 'Kept a marker-bearing copy at %s', $pristine ));
+        }
+        last;
+    }
+
+    unless ( defined $base ) {
+        warning( sprintf(
+            "No marker-bearing %s to merge into. courier-authlib 0.72+ will "
+            . "reject it and every mail login will fail. Reinstall "
+            . "courier-authlib-mysql to restore the packaged file, then re-run "
+            . "the installer.", $dest
+        ));
+        return 0;
+    }
+
+    my %want;
+    for my $line ( split /\n/, ${ $cfgTpl } ) {
+        next if $line =~ /^\s*(?:#|$)/;
+        my ( $k, $v ) = $line =~ /^(\S+)\s+(.*)$/ or next;
+        $want{$k} = $v;
+    }
+
+    my ( @out, %seen );
+    for my $line ( split /\n/, $base ) {
+        if ( my ( $k ) = $line =~ /^(\w+)\s+/ ) {
+            if ( exists $want{$k} ) {
+                push @out, "$k\t\t$want{$k}";
+                $seen{$k} = TRUE;
+                next;
+            }
+        }
+        push @out, $line;
+    }
+
+    my @missing = grep { !$seen{$_} } sort keys %want;
+    if ( @missing ) {
+        push @out, '', '# Added by i-MSCP';
+        push @out, map { "$_\t\t$want{$_}" } @missing;
+    }
+
+    debug( sprintf(
+        'Merged %d setting(s) into the packaged %s, %d appended',
+        scalar keys %seen, $dest, scalar @missing
+    ));
+
+    ${ $cfgTpl } = join( "\n", @out ) . "\n";
+    0;
+}
+
+=item _installAuthdaemonMountDropIn( \%fields )
+
+ Re-establish the authdaemon bind mount whenever the daemon restarts.
+
+ courier-authdaemon uses RuntimeDirectory=, so systemd removes and recreates
+ its socket directory on each restart. The bind mount into the Postfix chroot
+ then points at an inode that no longer has a name, the socket disappears from
+ the chroot, and SMTP AUTH fails with "unable to canonify user and get
+ auxprops" - while mount(8) still reports the mount as present.
+
+ A drop-in that re-binds after the daemon has started closes that window. It is
+ conditional on the socket being missing, so a normal start costs nothing.
+
+ Param hashref \%fields Mount fields as passed to mount()
+ Return int 0 on success, other on failure
+
+=cut
+
+sub _installAuthdaemonMountDropIn
+{
+    my ( $self, $fields ) = @_;
+
+    return 0 unless iMSCP::Service->getInstance()->isSystemd();
+
+    my $sname = $self->{'config'}->{'AUTHDAEMON_SNAME'} or return 0;
+    my $dir   = "/etc/systemd/system/$sname.service.d";
+
+    local $@;
+    eval { iMSCP::Dir->new( dirname => $dir )->make( { mode => 0755 } ); };
+    if ( $@ ) { error( $@ ); return 1; }
+
+    my $file = iMSCP::File->new( filename => "$dir/imscp-postfix-chroot.conf" );
+    $file->set( <<"EOF" );
+# SYSTEMD.UNIT(5) drop-in - auto-generated by i-MSCP
+#     DO NOT EDIT THIS FILE BY HAND -- YOUR CHANGES WILL BE OVERWRITTEN
+#
+# RuntimeDirectory= makes systemd recreate $fields->{'fs_spec'} on every
+# restart, which silently detaches the bind mount into the Postfix chroot and
+# breaks SMTP authentication. Re-bind once the daemon is up.
+[Service]
+ExecStartPost=/bin/sh -c '[ -S "$fields->{'fs_file'}/socket" ] || { /bin/umount "$fields->{'fs_file'}" 2>/dev/null; /bin/mount --bind "$fields->{'fs_spec'}" "$fields->{'fs_file'}"; }'
+EOF
+
+    my $rs = $file->save();
+    $rs ||= $file->mode( 0644 );
+    return $rs if $rs;
+
+    my ( $stdout, $stderr );
+    $rs = execute(
+        [ '/usr/bin/systemctl', 'daemon-reload' ], \$stdout, \$stderr
+    );
+    debug( $stdout ) if length $stdout;
+    error( $stderr || 'Unknown error' ) if $rs;
+    $rs;
 }
 
 =back
