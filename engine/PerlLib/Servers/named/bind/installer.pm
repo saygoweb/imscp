@@ -606,11 +606,20 @@ sub _buildConf
         # Fix for #IP-1333
         my $service = iMSCP::Service->getInstance();
         if ( $service->isSystemd() ) {
+            my $rcService = $self->_resolvconfService();
+
             if ( $self->{'config'}->{'LOCAL_DNS_RESOLVER'} eq 'yes' ) {
-                $service->enable( 'bind9-resolvconf' );
+                $service->enable( $rcService );
+                # Enabling alone only takes effect at the next boot, and the
+                # rest of this install needs working name resolution now - the
+                # Composer download a few steps later is the first thing to
+                # fail without it.
+                eval { $service->start( $rcService ); };
             } else {
-                $service->stop( 'bind9-resolvconf' );
-                $service->disable( 'bind9-resolvconf' );
+                eval {
+                    $service->stop( $rcService );
+                    $service->disable( $rcService );
+                };
             }
         }
 
@@ -847,6 +856,86 @@ sub _oldEngineCompatibility
     }
 
     $self->{'events'}->trigger( 'afterNamedOldEngineCompatibility' );
+}
+
+=item _resolvconfService( )
+
+ Return the name of the resolvconf helper service to manage.
+
+ The unit i-MSCP ships hardcodes bind9.service in Requires, After and
+ WantedBy. That is right up to Debian 11, but Debian 12 renamed the daemon's
+ unit to named.service and kept bind9.service only as an alias - and systemd
+ will not install a WantedBy symlink for an alias. On those releases our unit
+ is written, never enabled, and never runs.
+
+ The symptom is worse than a missing nameserver. On a cloud image
+ systemd-resolved has already registered its 127.0.0.53 stub with resolvconf,
+ and i-MSCP disables resolved without withdrawing it, so resolv.conf is left
+ naming a stub nothing listens on. The install then fails at the first step
+ that needs the network, with an opaque "Temporary failure in name
+ resolution".
+
+ Debian 12+ ships its own <named>-resolvconf.service with byte-identical
+ ExecStart/ExecStop, a correct PartOf/WantedBy=named.service, and
+ Alias=bind9-resolvconf.service. Where it exists, prefer it and drop our copy:
+ it is maintained by the distribution and it stops with named rather than
+ lingering. Our file in /etc/systemd/system would otherwise shadow the alias.
+
+ Note the returned name matters: iMSCP::Service resolves units by filename and
+ does not follow systemd aliases, so asking it to enable 'bind9-resolvconf'
+ once our file is gone fails with "Couldn't resolve the bind9-resolvconf
+ unit".
+
+ Return string Service name to enable or disable
+
+=cut
+
+sub _resolvconfService
+{
+    my ( $self ) = @_;
+
+    my $named = $self->{'config'}->{'NAMED_SERVICE'} || 'bind9';
+    my $ours  = '/etc/systemd/system/bind9-resolvconf.service';
+
+    return 'bind9-resolvconf' if $named eq 'bind9';
+
+    for my $distUnit (
+        "/usr/lib/systemd/system/$named-resolvconf.service",
+        "/lib/systemd/system/$named-resolvconf.service"
+    ) {
+        next unless -f $distUnit;
+
+        if ( -f $ours ) {
+            debug( sprintf(
+                'Dropping %s in favour of the distribution %s-resolvconf.service',
+                $ours, $named
+            ));
+            iMSCP::File->new( filename => $ours )->delFile() == 0 or return 'bind9-resolvconf';
+
+            my $rs = execute(
+                [ '/usr/bin/systemctl', 'daemon-reload' ], \my $out, \my $err
+            );
+            debug( $out ) if length $out;
+            error( $err || 'Unknown error' ) if $rs;
+        }
+
+        return "$named-resolvconf";
+    }
+
+    # No distribution unit: keep ours, but point it at the right service.
+    if ( -f $ours ) {
+        my $file = iMSCP::File->new( filename => $ours );
+        my $fileC = $file->get();
+        if ( defined $fileC && $fileC =~ /\bbind9\.service\b/ ) {
+            debug( sprintf( 'Pointing %s at %s.service', $ours, $named ));
+            $fileC =~ s/\bbind9\.service\b/$named.service/g;
+            $file->set( $fileC );
+            $file->save();
+            execute( [ '/usr/bin/systemctl', 'daemon-reload' ], \my $o, \my $e );
+        }
+    }
+
+    'bind9-resolvconf';
 }
 
 =back
