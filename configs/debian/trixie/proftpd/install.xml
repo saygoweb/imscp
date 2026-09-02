@@ -6,5 +6,13 @@
     <folders>${SYSTEM_CONF}/proftpd/working</folders>
     <copy_config>${SYSTEM_CONF}/proftpd/proftpd.conf</copy_config>
     <copy_config>${SYSTEM_CONF}/proftpd/proftpd.data.dist</copy_config>
-    <copy_config if="'${FTPD_PACKAGE}' eq 'Servers::ftpd::proftpd'">${ROOT_CONF}/logrotate.d/proftpd-basic</copy_config>
+    <!--
+        No proftpd-basic logrotate config on Debian 13. The package is
+        proftpd-core here, and it ships /etc/logrotate.d/proftpd-core covering
+        the same two logs with identical settings, plus xferlog and
+        xferreport which ours does not. Installing ours alongside it gives
+        logrotate two entries for /var/log/proftpd/proftpd.log, which it
+        treats as a fatal "duplicate log entry" - and logrotate.service then
+        exits 1, so NOTHING on the system is rotated, not just proftpd.
+    -->
 </install>
