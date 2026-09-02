@@ -413,11 +413,37 @@ sub _setupHostname
     my $host = shift @labels;
     my $hostnameLocal = "$hostname.local";
 
-    my $file = iMSCP::File->new( filename => '/etc/hosts' );
-    $rs = $file->copyFile( '/etc/hosts.bkp' ) unless -f '/etc/hosts.bkp';
-    return $rs if $rs;
+    # BASE_SERVER_IP is used here as the host's own address, but on a cloud
+    # instance it is routinely 0.0.0.0 - the documented value for EC2 and
+    # friends, meaning "listen on every interface". Writing that into
+    # /etc/hosts gives
+    #
+    #     0.0.0.0  server.example.com  server
+    #
+    # and since nsswitch reads files before dns, the machine then resolves its
+    # own FQDN to 0.0.0.0, i.e. to itself. Anything on the box that reaches the
+    # server by name - a migration script talking to the machine it is
+    # replacing, most memorably - silently connects to localhost instead.
+    #
+    # 127.0.1.1 is the Debian convention for a host with no fixed address of
+    # its own, and is what cloud-init writes for the same case.
+    $lanIP = '127.0.1.1' if !length $lanIP || $lanIP eq '0.0.0.0'
+        || $lanIP eq '::';
 
-    my $content = <<"EOF";
+    # Leave /etc/hosts alone where cloud-init owns it. With
+    # manage_etc_hosts: true it rewrites the file from its own template on
+    # every boot, so anything written here survives only until the next
+    # reboot - and the two then disagree, which is worse than either alone.
+    # Detect it from the configuration, and from the banner cloud-init leaves
+    # in the file it generated.
+    if ( $self->_cloudInitManagesHosts() ) {
+        debug( 'cloud-init manages /etc/hosts; leaving it alone' );
+    } else {
+        my $file = iMSCP::File->new( filename => '/etc/hosts' );
+        $rs = $file->copyFile( '/etc/hosts.bkp' ) unless -f '/etc/hosts.bkp';
+        return $rs if $rs;
+
+        my $content = <<"EOF";
 127.0.0.1   $hostnameLocal   localhost
 $lanIP  $hostname   $host
 
@@ -429,16 +455,17 @@ ff02::1 ip6-allnodes
 ff02::2 ip6-allrouters
 ff02::3 ip6-allhosts
 EOF
-    $file->set( $content );
+        $file->set( $content );
 
-    $rs = $file->save();
-    $rs ||= $file->owner(
-        $::imscpConfig{'ROOT_USER'}, $::imscpConfig{'ROOT_GROUP'}
-    );
-    $rs ||= $file->mode( 0644 );
-    return $rs if $rs;
+        $rs = $file->save();
+        $rs ||= $file->owner(
+            $::imscpConfig{'ROOT_USER'}, $::imscpConfig{'ROOT_GROUP'}
+        );
+        $rs ||= $file->mode( 0644 );
+        return $rs if $rs;
+    }
 
-    $file = iMSCP::File->new( filename => '/etc/hostname' );
+    my $file = iMSCP::File->new( filename => '/etc/hostname' );
     $file->set( $host );
 
     $rs = $file->save();
@@ -522,6 +549,48 @@ sub _setupPrimaryIP
     }
 
     $self->{'events'}->trigger( 'afterSetupPrimaryIP', $ipAddr );
+}
+
+=item _cloudInitManagesHosts( )
+
+ Does cloud-init own /etc/hosts on this machine?
+
+ With manage_etc_hosts: true, cloud-init regenerates /etc/hosts from its own
+ template on every boot. Writing the file here then produces a setting that
+ lasts until the next reboot and silently reverts - the two disagreeing is
+ worse than either owning it outright.
+
+ Return bool TRUE when cloud-init manages the file
+
+=cut
+
+sub _cloudInitManagesHosts
+{
+    # The banner cloud-init writes into a file it generated is the most direct
+    # evidence, and it survives even if the configuration has since moved.
+    if ( open my $fh, '<', '/etc/hosts' ) {
+        while ( my $line = <$fh> ) {
+            next unless $line =~ /manage_etc_hosts/;
+            close $fh;
+            return TRUE;
+        }
+        close $fh;
+    }
+
+    for my $cfg ( '/etc/cloud/cloud.cfg', glob '/etc/cloud/cloud.cfg.d/*.cfg' ) {
+        next unless -f $cfg;
+        open my $fh, '<', $cfg or next;
+        while ( my $line = <$fh> ) {
+            next unless $line =~ /^\s*manage_etc_hosts\s*:\s*(\S+)/;
+            my $v = lc $1;
+            close $fh;
+            return TRUE if $v eq 'true' || $v eq 'localhost' || $v eq 'yes';
+            last;
+        }
+        close $fh;
+    }
+
+    FALSE;
 }
 
 =back
