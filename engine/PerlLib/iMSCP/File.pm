@@ -299,6 +299,31 @@ sub copyFile
         $dst = File::Spec->catfile( $dst, basename( $self->{'filename'} ));
     }
 
+    # Never write through a symlink standing at the destination.
+    #
+    # copy() below opens the destination for writing, so where a symlink is
+    # already there it is the file at the far end that gets overwritten - and
+    # that file is routinely one the distribution owns. Debian 12+ enables
+    # named.service with Alias=bind9.service, which leaves
+    # /etc/systemd/system/bind9.service as a symlink to the packaged
+    # /usr/lib/systemd/system/named.service; installing our own bind9.service
+    # over it replaced BIND's unit with ours, and dpkg -V bind9 duly reported
+    # the unit modified.
+    #
+    # Installing a file means replacing whatever occupies that path, not
+    # editing whatever it happens to point at, so remove the symlink and let
+    # the copy create a real file in its place. This also lets a symlink be
+    # copied over one that already exists, which symlink() alone refuses.
+    my $dstPath = -d $dst
+        ? File::Spec->catfile( $dst, basename( $self->{'filename'} )) : $dst;
+
+    if ( -l $dstPath && !unlink( $dstPath ) ) {
+        error( sprintf(
+            "Couldn't remove the '%s' symlink: %s", $dstPath, $!
+        ));
+        return 1;
+    }
+
     if ( S_ISLNK $mode ) {
         my $lnkTarget = readlink( $self->{'filename'} );
 
