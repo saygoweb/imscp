@@ -143,6 +143,31 @@ n=$(ls /etc/apache2/sites-enabled/*.conf 2>/dev/null | wc -l)
 n=$(ls /etc/letsencrypt/renewal/*.conf 2>/dev/null | wc -l)
 [ "$n" -gt 150 ] && ok "$n certbot renewal configs" || bad "only $n renewal configs (aws1 had 168)"
 
+# --- git-checkout deployment ------------------------------------------------
+# A full imscp-autoinstall removes gui/ and engine/ and re-creates them as real
+# directories, which silently ends the checkout deployment: everything keeps
+# working, but every later `git pull` stops taking effect. See docs/deployment.md.
+GIT_ROOT="${GIT_ROOT:-/var/www/imscp-git}"
+if [ -d "$GIT_ROOT/.git" ]; then
+    for d in engine gui; do
+        if [ -L "/var/www/imscp/$d" ]; then
+            tgt=$(readlink -f "/var/www/imscp/$d")
+            [ "$tgt" = "$GIT_ROOT/$d" ] \
+                && ok "/var/www/imscp/$d -> $tgt" \
+                || bad "/var/www/imscp/$d points at $tgt, not $GIT_ROOT/$d"
+        else
+            bad "/var/www/imscp/$d is a real directory - the symlink was lost (autoinstall?); git pull no longer deploys"
+        fi
+    done
+    br=$(git -C "$GIT_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null)
+    [ "$br" = "migrate/2026-09" ] && ok "checkout on $br" || bad "checkout on '$br', expected migrate/2026-09"
+    n=$(git -C "$GIT_ROOT" status --porcelain 2>/dev/null | wc -l)
+    [ "$n" -eq 0 ] && ok "checkout working tree clean" || bad "$n uncommitted change(s) in $GIT_ROOT"
+    # SSL private keys must not have been swept up by a blanket chown
+    n=$(find "$GIT_ROOT/gui/data/certs" -name '*.pem' ! -user root 2>/dev/null | wc -l)
+    [ "$n" -eq 0 ] && ok "all certs/*.pem still root-owned" || bad "$n private key(s) in certs/ no longer owned by root"
+fi
+
 echo
 if [ "$FAILED" -eq 0 ]; then
     log "All checks passed. Safe to move the Elastic IP."

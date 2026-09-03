@@ -850,9 +850,10 @@ i-MSCP uses no pcre maps.
 
 
 
-Three faults, each of which alone stops every mail account from working. All
-three are handled by the listeners, but they are worth knowing because none of
-them produces an error that names the real cause.
+Three faults, each of which alone stops every mail account from working. Two
+are now fixed in core and only the third is still a listener's job, but all
+three are worth knowing because none of them produces an error that names the
+real cause.
 
 1. **`authmysqlrc` loses its markers.** courier-authlib 0.72.4 refuses a
    configuration file that has lost the `##NAME:` lines it ships, logging
@@ -861,24 +862,29 @@ them produces an error that names the real cause.
    module, `FAIL, all modules rejected`. i-MSCP writes the file from its own
    bare template, so the markers are gone after the first install. Buster's
    0.68 did not enforce this, which is why aws1 is unaffected.
-   `20_saygoweb_courier_ssl.pl` merges i-MSCP's values into the packaged file's
-   structure and keeps a pristine copy at
-   `/etc/courier/authmysqlrc.imscp-pristine`.
+   `Servers::po::courier::installer::_preserveAuthlibMarkers()` merges i-MSCP's
+   values into the packaged file's structure and keeps a pristine copy at
+   `/etc/courier/authmysqlrc.imscp-pristine`. This was first carried by
+   `20_saygoweb_courier_ssl.pl`; that listener no longer does it, and now only
+   rebuilds the Courier SSL PEMs from the Let's Encrypt certificate.
 
 2. **Cyrus SASL cannot find `smtpd.conf`.** Buster's libsasl2 searched
    `/etc/postfix/sasl` unaided; Trixie's does not. Postfix then falls back to
    its own defaults — advertising the full mech list rather than the configured
    `plain login`, and using auxprop instead of authdaemond — so every SMTP AUTH
-   fails with *"unable to canonify user and get auxprops"*. The Postfix
-   listener sets `cyrus_sasl_config_path = /etc/postfix/sasl`. aws1 has no such
-   setting and needs none.
+   fails with *"unable to canonify user and get auxprops"*.
+   `Servers::po::courier::installer` sets `cyrus_sasl_config_path =
+   /etc/postfix/sasl` alongside the other SASL settings. This was first carried
+   by `10_saygoweb_postfix.pl`; that listener no longer sets it. aws1 has no
+   such setting and needs none.
 
 3. **`postfix-pcre` is not installed.** `header_checks` is a `pcre:` map and
    Debian ships PCRE support separately; i-MSCP does not ask for it. Without
    it `cleanup(8)` rejects *every* message with *"header_checks map lookup
    problem -- message not accepted, try again later"* — a total outage that
-   reads like a transient fault. The Postfix listener adds the package and
-   keeps it through an uninstall pass.
+   reads like a transient fault. `10_saygoweb_postfix.pl` adds the package and
+   keeps it through an uninstall pass. This one stays in the listener because
+   it is genuinely site-specific: stock i-MSCP uses no pcre maps.
 
 Verified end to end: submit on 587 with STARTTLS and AUTH, delivery into the
 migrated maildir, retrieval over IMAP, POP3 login, and Roundcube reachable —
