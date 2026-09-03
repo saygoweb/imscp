@@ -154,6 +154,151 @@ therefore states every value explicitly.
 back the supported way, at priority `-99` so it runs after the Courier
 installer's own `afterMtaBuildConf` listener and wins.
 
+### The zones name servers that nothing is delegated to
+
+`Servers/named/bind.pm:891-905` names the authoritative servers after the zone
+it is writing. It walks `[ domain IP, SECONDARY_DNS ]`, numbers them off, and
+adds in-zone glue for each, so every zone comes out as
+
+```
+@  IN  SOA  ns1.<domain>. hostmaster.<domain>. (...)
+@  IN  NS   ns1              ns1  IN  A  <domain IP>
+@  IN  NS   ns2              ns2  IN  A  52.35.134.194
+```
+
+Nothing is delegated to those names. The registrar entries are
+`ns4.arkwebhost.net` (this box, 34.212.49.11) and `ns3.arkwebhost.net` (aws2,
+52.35.134.194). Asked of the TLD servers directly, 156 of the 189 zones delegate
+to exactly that pair, the rest are on Cloudflare or registrar DNS, and **none**
+is delegated to `ns1.<its own domain>`. The child NS RRset has disagreed with
+the parent for as long as the zones have existed, and the `ns1`/`ns2` glue
+answered nobody.
+
+`listeners/30_saygoweb_named_ns.pl` fixes it on `beforeNamedAddDmnDb`: the NS
+bloc becomes `ns4.arkwebhost.net.` and `ns3.arkwebhost.net.`, the SOA MNAME
+becomes `ns4`, and the glue bloc is emptied. Both `replaceBloc` calls drop the
+marker comments with the content, so the `getBloc` calls in `bind.pm` that
+follow come back empty and the built-in `ns<N>` loop is skipped — the listener
+never has to fight it.
+
+No glue is emitted because none belongs anywhere: every zone but one is
+out-of-zone for these names, and in `arkwebhost.net` the addresses of `ns1` to
+`ns4` are **custom DNS records** in the panel (`domain_dns`, TTL 3600). A custom
+RR overrides a default RR of the same name and type
+(`bind.pm:530-560`), so the template's glue was being discarded in that zone
+anyway.
+
+`arkwebhost.net` is in the listener's skip list. Its own delegation in `.net`
+still lists `ns1` and `ns2` beside `ns3` and `ns4`, so that zone gets changed
+deliberately rather than as a side effect of a panel edit.
+
+Applying it to zones that already exist means a rebuild through the request
+queue — there is no DNS-only path, because the custom-DNS module rebuilds from
+the intermediate zone file without re-running `_addDmnDb`:
+
+```sh
+# per batch: mark 'ok' domains and aliases 'tochange', excluding arkwebhost.net
+perl /var/www/imscp/engine/imscp-rqst-mngr
+# then drain the custom DNS queue - see 'A bulk rebuild outruns the custom
+# DNS queue' below. Skipping this bounces mail.
+```
+
+`Modules/Domain.pm:138-162` and `Modules/Alias.pm:136-154` cascade to
+subdomains and custom DNS records, and `DbTasksProcessor` runs
+Domain → Subdomain → Alias → SubAlias → CustomDNS, so the zone is rebuilt from
+the template first and the subdomain blocs and custom records go back on top.
+Verified against a compiled zone dump of `mseag.org` (6 subdomains, 11 custom
+records): the only difference was the three NS/SOA lines and the two dropped
+glue records.
+
+Done for all 185 `ok` domains and aliases on 2026-09-02. One domain is left on
+the old naming: **tractorville.co.nz**, which is `disabled`. `disableDmn` only
+rewrites a zone under `$::execmode eq 'setup'` (`bind.pm:234-243`), so it will
+pick the new records up on the next installer run and must not be marked
+`tochange` in the meantime — that would re-enable a suspended domain.
+
+### A bulk rebuild outruns the custom DNS queue
+
+`DbTasksProcessor.pm:196-226` selects custom DNS work with **`LIMIT 1`** — one
+domain and one alias per run of `imscp-rqst-mngr`, no matter how much is
+queued. Every other task type is selected without a limit; only these two are
+capped.
+
+That is harmless when the panel drives it, because a customer changes one thing
+and a run follows. It is not harmless in a bulk rollout. Marking a domain
+`tochange` rewrites its zone from the template and cascades
+`domain_dns` to `tochange` (`Modules/Domain.pm:151-161`), so between the
+rebuild and the CustomDNS module catching up, **the zone is served without any
+of its custom records**. Mark 20 domains and one run restores one of them.
+
+The damage is not theoretical, and it is worst for the domains on external
+mail. Their MX lives only in `domain_dns`, so while it is missing the zone has
+no MX at all, senders fall back to the implicit MX (the apex A record, this
+box), Postfix accepts the domain as a relay domain, looks the MX up again, gets
+itself, and bounces:
+
+```
+status=bounced (mail for nakiplumbing.co.nz loops back to myself)
+```
+
+`dsn=5.4.6` is permanent, so the sender gets an NDR and the message is gone.
+This happened during the MX rollout on 2026-09-02: 30 messages to 8 domains
+between 01:41 and 02:07, listed in the run notes. Local mailboxes were
+unaffected — Postfix routes them by its virtual maps, which never referred to
+the MX.
+
+So a bulk rollout is not finished when `imscp-rqst-mngr` returns. Drain the
+queue, and check the count rather than the exit status:
+
+```sh
+pending() {
+    mysql -N -B imscp -e "SELECT COUNT(*) FROM domain_dns
+        WHERE domain_dns_status IN
+        ('toadd','tochange','toenable','todisable','todelete')"
+}
+while [ "$(pending)" -gt 0 ]; do perl /var/www/imscp/engine/imscp-rqst-mngr; done
+```
+
+Watch for a run that makes no progress: that is a genuine failure, not the
+`LIMIT 1`, and the status column will hold the error.
+
+`tochange` left in *any* status column means unprocessed work, not work in
+flight — there is no background worker to finish it. Treat it as a failure when
+verifying, which is the check that would have caught this within a minute
+instead of half an hour.
+
+### The MX names the zone instead of the mail server
+
+Same shape as the NS records above: the templates name the mail exchanger after
+the zone, so every zone with mail hosted here published `MX 10 mail.<domain>.`
+(and `mail.<sub>.<domain>.` for subdomains) while the machine behind it answers
+as `mail.saygoweb.com` — Postfix's `myhostname`, the PTR for 34.212.49.11, and
+the only SAN on the certificate, with no `tls_server_sni_maps` to offer another.
+
+A sending MTA validates the certificate against the MX hostname, not against
+the recipient domain, so every one of those zones advertised a name the
+certificate did not cover. Nothing failed on it, because opportunistic STARTTLS
+does not check names at all — but it foreclosed MTA-STS and DANE, both of which
+require the MX hostname to be on the certificate. It is the same reasoning
+behind Exchange Online moving its MX records onto the DNSSEC-signed
+`mx.microsoft` rather than leaving them on `mail.protection.outlook.com`.
+
+`listeners/40_saygoweb_named_mx.pl` rewrites the MX in both templates, on
+`beforeNamedAddDmnDb` for zones and `beforeNamedAddSub` for subdomains. Domains
+on external mail need no special case: their `MAIL_ENABLED` is false, so
+`bind.pm` discards the whole mail bloc after the listener has run.
+
+The per-domain `mail`, `imap`, `pop`, `pop3` and `smtp` A records stay. They are
+what customer mail clients are pointed at, and those clients hit the same
+certificate mismatch on 993/995/587 — visibly, on a dialog a human sees, unlike
+the MX case. Moving them to `mail.saygoweb.com` is a customer migration to run
+on its own, not a side effect of a DNS change.
+
+Done for all 186 `ok` domains and aliases on 2026-09-02, leaving
+`arkwebhost.net` (excluded from the rollout, though the listener has no skip
+list for MX and it will convert when next regenerated) and the `disabled`
+`tractorville.co.nz`.
+
 ---
 
 ## What changes underneath
