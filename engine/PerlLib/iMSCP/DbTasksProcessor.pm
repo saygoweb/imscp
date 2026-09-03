@@ -201,7 +201,8 @@ sub processDbTasks
             )
             AND `t1`.`alias_id` = 0
             AND `t2`.`domain_status` IN('ok', 'disabled')
-            LIMIT 1
+            GROUP BY `t1`.`domain_id`, `t2`.`domain_name`
+            ORDER BY `t1`.`domain_id` ASC
         "
     );
 
@@ -220,7 +221,8 @@ sub processDbTasks
             )
             AND `t1`.`alias_id` <> 0
             AND `t2`.`alias_status` IN('ok', 'disabled')
-            LIMIT 1
+            GROUP BY `t1`.`alias_id`, `t2`.`alias_name`
+            ORDER BY `t1`.`alias_id` ASC
         ",
         FALSE
     );
