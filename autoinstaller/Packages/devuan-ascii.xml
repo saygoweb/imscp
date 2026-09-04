@@ -249,13 +249,7 @@
             >
                 php7.3
             </package>
-            <package
-                    post_install_tasks="
-                        /usr/bin/update-alternatives --set php /usr/bin/php7.3
-                    "
-            >
-                php7.3-cli
-            </package>
+            <package>php7.3-cli</package>
             <package>php7.3-cgi</package>
             <package>php7.3-fpm</package>
             <package>php7.3-common</package>
@@ -270,16 +264,7 @@
             <package>php7.3-mbstring</package>
             <package>php7.3-mysql</package>
             <package>php7.3-opcache</package>
-            <package
-                    post_install_tasks="
-                        /usr/bin/update-alternatives
-                        --set phar /usr/bin/phar7.3;
-                        /usr/bin/update-alternatives
-                        --set phar.phar /usr/bin/phar.phar7.3
-                    "
-            >
-                php7.3-phar
-            </package>
+            <package>php7.3-phar</package>
             <package>php7.3-pspell</package>
             <package>php7.3-xml</package>
             <package>php7.3-zip</package>
@@ -301,7 +286,12 @@
             >
                 php7.4
             </package>
-            <package>php7.4-cli
+            <package
+                    post_install_tasks="
+                        /usr/bin/update-alternatives --set php /usr/bin/php7.4
+                    "
+            >
+                php7.4-cli
             </package>
             <package>php7.4-cgi</package>
             <package>php7.4-fpm</package>
@@ -317,7 +307,16 @@
             <package>php7.4-mbstring</package>
             <package>php7.4-mysql</package>
             <package>php7.4-opcache</package>
-            <package>php7.4-phar</package>
+            <package
+                    post_install_tasks="
+                        /usr/bin/update-alternatives
+                        --set phar /usr/bin/phar7.4;
+                        /usr/bin/update-alternatives
+                        --set phar.phar /usr/bin/phar.phar7.4
+                    "
+            >
+                php7.4-phar
+            </package>
             <package>php7.4-pspell</package>
             <package>php7.4-xml</package>
             <package>php7.4-zip</package>
