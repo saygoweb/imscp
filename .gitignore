@@ -16,3 +16,15 @@ daemon/imscp_daemon
 gui/data/*
 gui/vendor/
 gui/library/
+
+# Generated inside the checkout when it is run in place — see docker/README.md.
+# Composer's own binary, the tool links the installer makes, and the plugin
+# checkouts docker/imscp links in.
+gui/bin/composer.phar
+gui/public/tools/*
+!gui/public/tools/index.php
+gui/plugins/*
+!gui/plugins/.gitkeep
+
+# docker/ development stack: per-checkout settings (ports, plugin list).
+/docker/.env

@@ -1,0 +1,103 @@
+# A single container running a complete i-MSCP server under systemd.
+#
+# There is deliberately no second service: i-MSCP installs and manages its own
+# MariaDB, nginx, apache2, postfix and friends, and splitting them out would
+# mean fighting the installer rather than exercising it. That is also why the
+# container is privileged — the installer sets up iptables rules for the traffic
+# logger, bind-mounts customer web directories, and systemd itself needs a
+# writable cgroup tree.
+#
+# State (the installed system, the databases, the mail spool) lives in the
+# container's own writable layer, so `docker/imscp stop` stops the container but
+# `docker/imscp destroy` throws the whole installation away.
+#
+# Everything conflict-prone (project name, published ports, hostname) is
+# overridable from docker/.env so that several checkouts can each run their own
+# server. Drive it with docker/imscp, not raw docker compose; see docker/README.md.
+
+name: ${COMPOSE_PROJECT_NAME:-imscp-dev}
+
+services:
+  imscp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        DEBIAN_SUITE: ${DEBIAN_SUITE:-bookworm}
+    image: imscp-dev:${DEBIAN_SUITE:-bookworm}
+    container_name: ${COMPOSE_PROJECT_NAME:-imscp-dev}
+
+    # i-MSCP requires a fully qualified host name, and refuses to install
+    # without one. Docker writes "<ip> <hostname>.<domainname> <hostname>" into
+    # /etc/hosts when both are set, which is what `hostname --fqdn` reads.
+    hostname: ${IMSCP_HOSTNAME_SHORT:-imscp}
+    domainname: ${IMSCP_DOMAIN:-docker.local}
+
+    # systemd as PID 1. On a cgroup v2 host Docker already gives a privileged
+    # container its own writable cgroup namespace, so no /sys/fs/cgroup bind
+    # mount is needed (and mounting the host's would in fact break it).
+    privileged: true
+    stop_signal: SIGRTMIN+3
+    stop_grace_period: 60s
+    tmpfs:
+      - /run:exec,mode=755
+      - /run/lock:mode=1777
+
+    # Nothing i-MSCP-specific is set here on purpose. The values docker/preseed.pl
+    # reads are install-time choices that live in docker/.env, and a container's
+    # environment is fixed when it is created — so baking them in would mean an
+    # edited docker/.env was silently ignored by the next `docker/imscp install`
+    # unless the container were recreated, which destroys the server. The driver
+    # passes them with `docker compose exec -e` instead, fresh on every run.
+
+    volumes:
+      # This checkout, as the single source of truth for gui/ and engine/.
+      # After the installer has run, docker/imscp link points the installed tree
+      # at it; see scripts/link-dev-tree.sh for exactly which paths.
+      - ${PROJECT_ROOT:-..}:/var/www/imscp-git
+      # The directory that holds the plugin checkouts — by default the one this
+      # repository sits in, so that ../imscp-php-version arrives as
+      # /var/www/imscp-plugins/imscp-php-version.
+      #
+      # It is one fixed mount rather than one bind mount per plugin, for two
+      # reasons. Changing a per-plugin mount changes the service definition, and
+      # Docker's answer to that is to recreate the container — which for this
+      # stack means throwing away the installed server and reinstalling it, half
+      # an hour, because a plugin was added to a list. And a bind mount inside
+      # /var/www/imscp could not be removed by setupInstallFiles(), which wipes
+      # gui/ wholesale at the start of every install. With the mount fixed and
+      # outside the installed tree, adding a plugin is `docker/imscp link`:
+      # which of these checkouts are actually plugins is decided there, by
+      # IMSCP_PLUGINS, and costs nothing but a symlink.
+      - ${PLUGINS_SRC_ROOT:-../..}:/var/www/imscp-plugins
+
+    ports:
+      # Control panel
+      - '${PANEL_HTTP_PORT:-8880}:8880'
+      - '${PANEL_HTTPS_PORT:-8443}:8443'
+      # Customer web sites
+      - '${HTTP_PORT:-8080}:80'
+      - '${HTTPS_PORT:-8444}:443'
+      # FTP. The passive range must be published unchanged: proftpd hands the
+      # client the port it is listening on, and the client connects to it.
+      - '${FTP_PORT:-2121}:21'
+      - '${FTP_PASSIVE_PORTS:-32768-32777}:${FTP_PASSIVE_PORTS:-32768-32777}'
+      # Mail
+      - '${SMTP_PORT:-2525}:25'
+      - '${SUBMISSION_PORT:-5587}:587'
+      - '${IMAP_PORT:-1143}:143'
+      - '${IMAPS_PORT:-9993}:993'
+      - '${POP3_PORT:-1110}:110'
+      - '${POP3S_PORT:-9995}:995'
+      # DNS
+      - '${DNS_PORT:-15353}:53/tcp'
+      - '${DNS_PORT:-15353}:53/udp'
+
+    healthcheck:
+      # "Healthy" means systemd finished booting, not that i-MSCP is installed —
+      # the install is a separate, much longer step driven by docker/imscp.
+      test: [CMD-SHELL, 'systemctl is-system-running | grep -qE "running|degraded"']
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 30s

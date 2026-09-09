@@ -1,0 +1,635 @@
+#!/usr/bin/env bash
+#
+# imscp — drive the i-MSCP development server from the host.
+#
+# Everything is relative to this script, so it works from any directory and from
+# any worktree:
+#
+#   docker/imscp init          # write docker/.env with free host ports
+#   docker/imscp up            # boot the container and install i-MSCP into it
+#   docker/imscp link          # re-point the installed tree at this checkout
+#   docker/imscp shell         # a root shell in the server
+#
+# Run `docker/imscp help` for the full list.
+
+set -euo pipefail
+
+DOCKER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$DOCKER_DIR/.." && pwd)"
+COMPOSE_FILE="$DOCKER_DIR/docker-compose.yml"
+ENV_FILE="$DOCKER_DIR/.env"
+
+export PROJECT_ROOT
+
+# Per-checkout overrides (ports, hostname, plugin list). Optional: `imscp init`
+# writes one.
+if [ -f "$ENV_FILE" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    . "$ENV_FILE"
+    set +a
+fi
+
+# One server per checkout by default, keyed on the directory name, so a worktree
+# never collides with the main checkout's container.
+if [ -z "${COMPOSE_PROJECT_NAME:-}" ]; then
+    slug="$(basename "$PROJECT_ROOT" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]/-/g')"
+    COMPOSE_PROJECT_NAME="imscp-${slug}"
+fi
+export COMPOSE_PROJECT_NAME
+
+export USER_UID="${USER_UID:-$(id -u)}"
+export USER_GID="${USER_GID:-$(id -g)}"
+
+export DEBIAN_SUITE="${DEBIAN_SUITE:-bookworm}"
+
+export IMSCP_HOSTNAME_SHORT="${IMSCP_HOSTNAME_SHORT:-imscp}"
+export IMSCP_DOMAIN="${IMSCP_DOMAIN:-docker.local}"
+IMSCP_FQDN="${IMSCP_HOSTNAME_SHORT}.${IMSCP_DOMAIN}"
+
+export PANEL_HTTP_PORT="${PANEL_HTTP_PORT:-8880}"
+export PANEL_HTTPS_PORT="${PANEL_HTTPS_PORT:-8443}"
+export HTTP_PORT="${HTTP_PORT:-8080}"
+export HTTPS_PORT="${HTTPS_PORT:-8444}"
+export FTP_PORT="${FTP_PORT:-2121}"
+export FTP_PASSIVE_PORTS="${FTP_PASSIVE_PORTS:-32768-32777}"
+export SMTP_PORT="${SMTP_PORT:-2525}"
+export SUBMISSION_PORT="${SUBMISSION_PORT:-5587}"
+export IMAP_PORT="${IMAP_PORT:-1143}"
+export IMAPS_PORT="${IMAPS_PORT:-9993}"
+export POP3_PORT="${POP3_PORT:-1110}"
+export POP3S_PORT="${POP3S_PORT:-9995}"
+export DNS_PORT="${DNS_PORT:-15353}"
+
+export IMSCP_ADMIN_LOGIN="${IMSCP_ADMIN_LOGIN:-admin}"
+export IMSCP_ADMIN_PASSWORD="${IMSCP_ADMIN_PASSWORD:-imscp1234}"
+export IMSCP_ADMIN_EMAIL="${IMSCP_ADMIN_EMAIL:-admin@example.com}"
+
+# The directory holding the plugin checkouts, mounted whole at
+# /var/www/imscp-plugins. Defaults to the directory this repository sits in.
+PLUGINS_SRC_ROOT="${IMSCP_PLUGINS_ROOT:-$(cd "$PROJECT_ROOT/.." && pwd)}"
+export PLUGINS_SRC_ROOT
+
+# Which of the checkouts in there are plugins to link into the panel, space
+# separated. e.g. IMSCP_PLUGINS="imscp-php-version imscp-letsencrypt"
+IMSCP_PLUGINS="${IMSCP_PLUGINS:-}"
+
+# Everything docker/preseed.pl reads. Passed with `docker compose exec -e` on
+# each install, never set in docker-compose.yml: a container's environment is
+# fixed when it is created, so a value baked in there would make an edited
+# docker/.env silently ineffective until the container was recreated — and
+# recreating it destroys the installed server.
+preseed_env() {
+    printf '%s\n' \
+        "IMSCP_ADMIN_LOGIN=$IMSCP_ADMIN_LOGIN" \
+        "IMSCP_ADMIN_PASSWORD=$IMSCP_ADMIN_PASSWORD" \
+        "IMSCP_ADMIN_EMAIL=$IMSCP_ADMIN_EMAIL" \
+        "IMSCP_HOSTNAME=$IMSCP_FQDN" \
+        "IMSCP_PANEL_VHOST=${IMSCP_PANEL_VHOST:-}" \
+        "IMSCP_PANEL_HTTP_PORT=$PANEL_HTTP_PORT" \
+        "IMSCP_PANEL_HTTPS_PORT=$PANEL_HTTPS_PORT" \
+        "IMSCP_PUBLIC_IP=${IMSCP_PUBLIC_IP:-}" \
+        "IMSCP_DATABASE_PASSWORD=${DATABASE_PASSWORD:-imscp1234}" \
+        "IMSCP_TIMEZONE=${IMSCP_TIMEZONE:-UTC}" \
+        "IMSCP_PO_SERVER=${IMSCP_PO_SERVER:-dovecot}" \
+        "IMSCP_FTPD_PASSIVE_PORTS=$FTP_PASSIVE_PORTS" \
+        "IMSCP_WEB_STATISTIC_PACKAGES=${IMSCP_WEB_STATISTIC_PACKAGES:-No}" \
+        "IMSCP_WEB_FTP_CLIENT_PACKAGES=${IMSCP_WEB_FTP_CLIENT_PACKAGES:-No}" \
+        "IMSCP_SQL_ADMIN_TOOL_PACKAGES=${IMSCP_SQL_ADMIN_TOOL_PACKAGES:-PhpMyAdmin}" \
+        "IMSCP_WEB_MAIL_CLIENT_PACKAGES=${IMSCP_WEB_MAIL_CLIENT_PACKAGES:-No}" \
+        "IMSCP_ANTI_ROOTKIT_PACKAGES=${IMSCP_ANTI_ROOTKIT_PACKAGES:-No}"
+}
+
+# The same, as the -e flags `docker compose exec` wants, plus the host identity
+# the link step needs — install-imscp.sh runs link-dev-tree.sh itself, and
+# without these it cannot hand the files it moves into the checkout back to the
+# user who owns it.
+preseed_env_args() {
+    env_args=(-e "HOST_UID=$USER_UID" -e "HOST_GID=$USER_GID")
+    local line
+    while IFS= read -r line; do
+        env_args+=(-e "$line")
+    done < <(preseed_env)
+}
+
+SERVICE=imscp
+GIT_MOUNT=/var/www/imscp-git
+PLUGIN_MOUNT_ROOT=/var/www/imscp-plugins
+CONTAINER_SCRIPTS=/usr/local/lib/imscp-docker
+
+# ----------------------------------------------------------------------------
+# helpers
+# ----------------------------------------------------------------------------
+
+die() {
+    printf 'imscp: %s\n' "$*" >&2
+    exit 1
+}
+
+info() {
+    printf '\033[36m==>\033[0m %s\n' "$*"
+}
+
+warn() {
+    printf '\033[33m==>\033[0m %s\n' "$*" >&2
+}
+
+compose() {
+    docker compose -f "$COMPOSE_FILE" --project-directory "$DOCKER_DIR" "$@"
+}
+
+# -T because agents and scripts pipe this; there is no TTY to allocate.
+c_exec() {
+    compose exec -T "$SERVICE" "$@"
+}
+
+# For commands whose output a person watches (the installer, mysql, a log tail).
+# Keep the TTY when there is one so progress renders, and drop it when this
+# script is itself being piped or run from an agent, where docker would
+# otherwise refuse with "the input device is not a TTY".
+c_exec_tty() {
+    local tty_args=()
+    [ -t 0 ] && [ -t 1 ] || tty_args=(-T)
+    compose exec "${tty_args[@]}" "$@"
+}
+
+running() {
+    local id
+    id="$(compose ps -q "$SERVICE" 2>/dev/null)" || return 1
+    [ -n "$id" ] || return 1
+    [ "$(docker inspect -f '{{.State.Running}}' "$id" 2>/dev/null)" = "true" ]
+}
+
+# Stopped counts too. Whether the container may be recreated has to be decided
+# from this rather than from installed(), which needs a *running* container to
+# answer and would happily let a stopped server be thrown away.
+container_exists() {
+    local id
+    id="$(compose ps -aq "$SERVICE" 2>/dev/null)" || return 1
+    [ -n "$id" ]
+}
+
+installed() {
+    running && c_exec test -f /etc/imscp/imscp.conf >/dev/null 2>&1
+}
+
+ensure_running() {
+    running || die "the server is not running — run 'docker/imscp up' first"
+}
+
+ensure_installed() {
+    ensure_running
+    installed || die "i-MSCP is not installed yet — run 'docker/imscp install'"
+}
+
+# Ports something is already listening on, TCP and UDP alike. The UDP half
+# matters: mDNS sits on 5353, which is the obvious host port for the container's
+# DNS, and a connect probe cannot see it.
+_listening_ports=''
+listening_ports() {
+    if [ -z "$_listening_ports" ] && command -v ss >/dev/null 2>&1; then
+        _listening_ports=" $(ss -lntuH 2>/dev/null \
+            | awk '{ n = split($5, a, ":"); print a[n] }' \
+            | sort -u | tr '\n' ' ')"
+    fi
+    printf '%s' "$_listening_ports"
+}
+
+port_in_use() {
+    case "$(listening_ports)" in
+        *" $1 "*) return 0 ;;
+    esac
+
+    # Where ss is missing, fall back to bash's /dev/tcp: a successful connect
+    # means something is listening there.
+    (exec 3<>"/dev/tcp/127.0.0.1/$1") >/dev/null 2>&1 || return 1
+    exec 3<&- 3>&-
+    return 0
+}
+
+find_free_port() {
+    local port="$1"
+    while port_in_use "$port"; do
+        port=$((port + 1))
+    done
+    printf '%s' "$port"
+}
+
+# The plugin directory name is not the checkout's name: i-MSCP wants the name
+# the plugin declares for itself, which every SGW plugin records in
+# makefile.json ("variables": { "name": "SGW_PhpVersion" }). Fall back to the
+# <Name>.php entry point, then to the directory name.
+plugin_name() {
+    local dir="$1" name=''
+
+    if [ -f "$dir/makefile.json" ]; then
+        name="$(sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+            "$dir/makefile.json" | head -n 1)"
+    fi
+
+    if [ -z "$name" ]; then
+        local candidate
+        for candidate in "$dir"/*.php; do
+            [ -f "$candidate" ] || continue
+            case "$(basename "$candidate")" in
+                config.php|info.php) continue ;;
+            esac
+            name="$(basename "$candidate" .php)"
+            break
+        done
+    fi
+
+    printf '%s' "${name:-$(basename "$dir")}"
+}
+
+# The plugin list is resolved on the host, where the checkouts are, and handed
+# to link-dev-tree.sh as "<directory name>:<plugin name>" pairs. Nothing about
+# it reaches docker-compose.yml, which is the point: changing the list must not
+# change the service definition and so must not recreate the container.
+plugin_specs() {
+    local entry dir name
+    for entry in $IMSCP_PLUGINS; do
+        case "$entry" in
+            */*) die "IMSCP_PLUGINS takes directory names inside $PLUGINS_SRC_ROOT, not paths: '$entry'" ;;
+        esac
+
+        dir="$PLUGINS_SRC_ROOT/$entry"
+        [ -d "$dir" ] || die "plugin checkout not found: $dir (from IMSCP_PLUGINS='$IMSCP_PLUGINS')"
+
+        name="$(plugin_name "$dir")"
+        printf '%s:%s\n' "$entry" "$name"
+    done
+}
+
+# ----------------------------------------------------------------------------
+# commands
+# ----------------------------------------------------------------------------
+
+cmd_init() {
+    if [ -f "$ENV_FILE" ] && [ "${1:-}" != "--force" ]; then
+        die ".env already exists at $ENV_FILE (pass --force to overwrite)"
+    fi
+
+    info "probing for free ports"
+    local panel_http panel_https http https ftp smtp submission imap imaps pop3 pop3s dns
+    panel_http="$(find_free_port "$PANEL_HTTP_PORT")"
+    panel_https="$(find_free_port "$PANEL_HTTPS_PORT")"
+    http="$(find_free_port "$HTTP_PORT")"
+    https="$(find_free_port "$HTTPS_PORT")"
+    ftp="$(find_free_port "$FTP_PORT")"
+    smtp="$(find_free_port "$SMTP_PORT")"
+    submission="$(find_free_port "$SUBMISSION_PORT")"
+    imap="$(find_free_port "$IMAP_PORT")"
+    imaps="$(find_free_port "$IMAPS_PORT")"
+    pop3="$(find_free_port "$POP3_PORT")"
+    pop3s="$(find_free_port "$POP3S_PORT")"
+    dns="$(find_free_port "$DNS_PORT")"
+
+    # Re-running with --force (e.g. because a port went stale) must not discard
+    # anything added to .env by hand. Keep any KEY=value line whose key isn't
+    # one this command itself generates.
+    local generated_keys='^(COMPOSE_PROJECT_NAME|PANEL_HTTP_PORT|PANEL_HTTPS_PORT|HTTP_PORT|HTTPS_PORT|FTP_PORT|SMTP_PORT|SUBMISSION_PORT|IMAP_PORT|IMAPS_PORT|POP3_PORT|POP3S_PORT|DNS_PORT)='
+    local preserved=""
+    if [ -f "$ENV_FILE" ]; then
+        preserved="$(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$ENV_FILE" | grep -vE "$generated_keys" || true)"
+    fi
+
+    cat > "$ENV_FILE" <<EOF
+# Generated by \`docker/imscp init\` on $(date -u +%Y-%m-%dT%H:%M:%SZ).
+# Local overrides for this checkout — not tracked by git.
+# See .env.example for everything else that can go in here.
+
+COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME
+
+PANEL_HTTP_PORT=$panel_http
+PANEL_HTTPS_PORT=$panel_https
+HTTP_PORT=$http
+HTTPS_PORT=$https
+FTP_PORT=$ftp
+SMTP_PORT=$smtp
+SUBMISSION_PORT=$submission
+IMAP_PORT=$imap
+IMAPS_PORT=$imaps
+POP3_PORT=$pop3
+POP3S_PORT=$pop3s
+DNS_PORT=$dns
+EOF
+
+    if [ -n "$preserved" ]; then
+        {
+            printf '\n# Preserved from the previous %s (not written by init):\n' "$(basename "$ENV_FILE")"
+            printf '%s\n' "$preserved"
+        } >> "$ENV_FILE"
+    fi
+
+    info "wrote $ENV_FILE (panel=$panel_http http=$http)"
+}
+
+cmd_up() {
+    local build_args=() up_args=() skip_install=0 allow_recreate=0
+    for arg in "$@"; do
+        case "$arg" in
+            --build) build_args+=(--build) ;;
+            --no-install) skip_install=1 ;;
+            --recreate) allow_recreate=1 ;;
+            *) die "unknown option for up: $arg" ;;
+        esac
+    done
+
+    # An installed server lives in the container's own writable layer, so
+    # anything that makes compose recreate the container — a changed port, a
+    # changed host name, a rebuilt image — silently throws away half an hour of
+    # installing. Refuse to do that by accident: --no-recreate keeps the
+    # container that is there, and --recreate is how you ask for a clean one.
+    if container_exists; then
+        if [ "$allow_recreate" = 0 ]; then
+            up_args+=(--no-recreate)
+        else
+            warn "--recreate discards the container and everything installed in it"
+        fi
+    fi
+
+    if ! running && port_in_use "$PANEL_HTTP_PORT"; then
+        die "port PANEL_HTTP_PORT=$PANEL_HTTP_PORT is already in use.
+Run 'docker/imscp init' to write docker/.env with free ports, or set it yourself."
+    fi
+
+    info "starting '$COMPOSE_PROJECT_NAME' (debian $DEBIAN_SUITE, hostname $IMSCP_FQDN)"
+    compose up -d "${up_args[@]}" "${build_args[@]}"
+
+    info "waiting for systemd to finish booting"
+    local waited=0
+    until c_exec systemctl is-system-running 2>/dev/null | grep -qE 'running|degraded'; do
+        waited=$((waited + 2))
+        if [ "$waited" -ge 120 ]; then
+            die "systemd did not finish booting within 120s — check 'docker/imscp journal'"
+        fi
+        sleep 2
+    done
+
+    if [ "$skip_install" = 1 ]; then
+        info "skipping the i-MSCP install (--no-install)"
+    elif installed; then
+        # The container was restarted rather than created: the links survive in
+        # the image layer, but re-running the link step is cheap and catches a
+        # plugin list that changed since the last boot.
+        cmd_link
+    else
+        cmd_install
+    fi
+
+    cmd_info
+}
+
+cmd_install() {
+    ensure_running
+    info "installing i-MSCP — this takes 20-40 minutes on a first run"
+    local env_args
+    preseed_env_args
+    # Interactive-capable (no -T) so progress is streamed as it happens.
+    c_exec_tty "${env_args[@]}" "$SERVICE" sh "$CONTAINER_SCRIPTS/install-imscp.sh" "$@"
+    # install-imscp.sh links gui/ and engine/, but the plugin list lives out here
+    # on the host, so the plugins still have to be linked in.
+    cmd_link
+}
+
+# plugin_specs runs in a command substitution, where its die() would only kill
+# the subshell — so take its exit status rather than trusting empty output.
+read_plugin_specs() {
+    local out
+    out="$(plugin_specs)" || exit 1
+    specs=()
+    [ -n "$out" ] && mapfile -t specs <<< "$out"
+    return 0
+}
+
+cmd_link() {
+    ensure_installed
+    local specs
+    read_plugin_specs
+    # The link step moves the installer's generated files into the checkout and
+    # has to hand them to whoever owns it out here.
+    compose exec -T -e "HOST_UID=$USER_UID" -e "HOST_GID=$USER_GID" \
+        "$SERVICE" sh "$CONTAINER_SCRIPTS/link-dev-tree.sh" "${specs[@]}"
+}
+
+cmd_unlink() {
+    ensure_installed
+    c_exec sh "$CONTAINER_SCRIPTS/unlink-dev-tree.sh"
+}
+
+cmd_reconfigure() {
+    ensure_installed
+    c_exec sh "$CONTAINER_SCRIPTS/unlink-dev-tree.sh"
+    local env_args
+    preseed_env_args
+    c_exec_tty "${env_args[@]}" "$SERVICE" perl "$GIT_MOUNT/engine/setup/imscp-reconfigure" \
+        --debug --verbose "$@"
+    cmd_link
+}
+
+cmd_plugins() {
+    local specs
+    read_plugin_specs
+
+    if [ "${#specs[@]}" -eq 0 ]; then
+        info "no plugins configured — set IMSCP_PLUGINS in docker/.env"
+        info "candidates in $PLUGINS_SRC_ROOT:"
+        (cd "$PLUGINS_SRC_ROOT" && ls -d imscp-*/ 2>/dev/null | sed 's|/$||;s/^/  /') || true
+        return 0
+    fi
+
+    local spec
+    for spec in "${specs[@]}"; do
+        printf '  %-30s -> %s/gui/plugins/%s\n' \
+            "$PLUGINS_SRC_ROOT/${spec%%:*}" /var/www/imscp "${spec##*:}"
+    done
+}
+
+cmd_perms() {
+    ensure_running
+    # The installer runs as root and, on a bad day, something recursive gets
+    # through a link and retags files in the checkout. This puts them back.
+    info "restoring ownership of the checkout to $USER_UID:$USER_GID"
+    c_exec chown -R "$USER_UID:$USER_GID" "$GIT_MOUNT"
+}
+
+cmd_info() {
+    local state='not running'
+    running && state='running'
+    installed && state='running, i-MSCP installed'
+
+    cat <<EOF
+
+  Server        $COMPOSE_PROJECT_NAME ($state)
+  Distribution  debian $DEBIAN_SUITE
+  Hostname      $IMSCP_FQDN
+
+  Control panel http://localhost:${PANEL_HTTP_PORT}/
+                login $IMSCP_ADMIN_LOGIN / $IMSCP_ADMIN_PASSWORD
+  Client sites  http://localhost:${HTTP_PORT}/   (send the Host: header)
+
+  Checkout      $PROJECT_ROOT -> $GIT_MOUNT
+  Plugins       ${IMSCP_PLUGINS:-<none>}
+                $PLUGINS_SRC_ROOT -> $PLUGIN_MOUNT_ROOT
+
+EOF
+}
+
+cmd_logs() {
+    ensure_running
+    # The container's own stdout is systemd's console, which says very little.
+    # What a developer wants is the panel and the installer.
+    local what="${1:-panel}"
+    case "$what" in
+        panel) c_exec_tty "$SERVICE" tail -f /var/log/imscp/imscp_panel.log ;;
+        install) c_exec_tty "$SERVICE" tail -f /var/log/imscp/imscp-autoinstall.log ;;
+        errors) c_exec_tty "$SERVICE" tail -f /var/log/imscp/errors.log ;;
+        boot) compose logs -f ;;
+        *) die "usage: imscp logs [panel|install|errors|boot]" ;;
+    esac
+}
+
+cmd_journal() {
+    ensure_running
+    c_exec_tty "$SERVICE" journalctl --no-pager "$@"
+}
+
+cmd_services() {
+    ensure_running
+    c_exec_tty "$SERVICE" systemctl list-units --type=service --no-pager "$@"
+}
+
+cmd_mysql() {
+    ensure_installed
+    c_exec_tty "$SERVICE" mysql "$@"
+}
+
+cmd_shell() {
+    ensure_running
+    compose exec -w "$GIT_MOUNT" "$SERVICE" bash
+}
+
+cmd_exec() {
+    [ $# -gt 0 ] || die "usage: imscp exec <command> [args...]"
+    ensure_running
+    c_exec_tty -w "$GIT_MOUNT" "$SERVICE" "$@"
+}
+
+cmd_destroy() {
+    if [ "${1:-}" != "--yes" ]; then
+        warn "this removes the container and everything installed in it"
+        printf 'Type the project name (%s) to confirm: ' "$COMPOSE_PROJECT_NAME"
+        local answer
+        read -r answer
+        [ "$answer" = "$COMPOSE_PROJECT_NAME" ] || die "aborted"
+    fi
+    compose down -v --remove-orphans
+    info "destroyed '$COMPOSE_PROJECT_NAME'"
+}
+
+cmd_help() {
+    cat <<'EOF'
+imscp — drive the i-MSCP development server from the host.
+
+Usage: docker/imscp <command> [args...]
+
+Server
+  init [--force]     Write docker/.env pinning this checkout to free host ports
+  up [--build]       Boot the container and install i-MSCP if it is not yet
+                     installed (--no-install to just boot it). Once a server is
+                     installed, `up` will not recreate the container even if the
+                     settings changed — that would throw the installation away.
+                     Pass --recreate when you do want a clean one.
+  install            Run the preseeded installer (again)
+  reconfigure [args] Run imscp-reconfigure, unlinking and relinking around it
+  stop               Stop the container, keeping the installation
+  start              Start it again
+  restart            Stop and start
+  destroy [--yes]    Remove the container and everything installed in it
+  ps                 Container status
+  info               URLs, credentials and mount points
+
+Development tree
+  link               Point the installed /var/www/imscp at this checkout
+  unlink             Replace those links with real copies again
+  plugins            Show the sibling plugin checkouts that will be mounted
+  perms              Give the checkout back to the host user
+
+Looking inside
+  shell              Root bash shell in /var/www/imscp-git
+  exec <cmd>         Run a command in the container
+  logs [what]        Follow a log: panel (default), install, errors, boot
+  journal [args]     journalctl inside the container
+  services           systemctl list-units --type=service
+  mysql [args]       mysql client as root
+
+How the tree is wired up
+  This checkout is mounted at /var/www/imscp-git. After the installer has run,
+  `link` replaces the installed code with symlinks back to it:
+
+    /var/www/imscp/engine             -> /var/www/imscp-git/engine
+    /var/www/imscp/gui                -> /var/www/imscp-git/gui
+    /var/www/imscp/gui/plugins/<Name> -> /var/www/imscp-plugins/<checkout>
+
+  gui/ is one link rather than a link per entry because the code reaches from
+  source to generated content by relative path — gui/include/imscp-lib.php does
+  `include __DIR__ . '/../vendor/autoload.php'`, and PHP resolves __DIR__
+  through symlinks. So `link` also moves vendor/, library/, bin/composer.phar,
+  public/tools/ and data/ into the checkout, where .gitignore already expects
+  them, and hands them back to your uid.
+
+  The directory holding your plugin checkouts — by default the one this
+  repository sits in — is mounted whole at /var/www/imscp-plugins. Which of them
+  are plugins is decided in docker/.env:
+
+    IMSCP_PLUGINS="imscp-php-version imscp-letsencrypt"
+
+  Each is linked under the name it gives itself in makefile.json, so
+  ../imscp-php-version arrives as /var/www/imscp/gui/plugins/SGW_PhpVersion.
+  Changing that list is applied by `link` and needs no container recreate,
+  which a bind mount per plugin would have forced.
+
+Examples
+  docker/imscp init
+  docker/imscp up --build
+  docker/imscp logs install
+  docker/imscp shell
+  docker/imscp link
+EOF
+}
+
+# ----------------------------------------------------------------------------
+
+command -v docker >/dev/null 2>&1 || die "docker is not installed or not on PATH"
+docker compose version >/dev/null 2>&1 || die "the docker compose plugin is required"
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+    init) cmd_init "$@" ;;
+    up) cmd_up "$@" ;;
+    install) cmd_install "$@" ;;
+    reconfigure) cmd_reconfigure "$@" ;;
+    link) cmd_link ;;
+    unlink) cmd_unlink ;;
+    plugins) cmd_plugins ;;
+    perms) cmd_perms ;;
+    stop) compose stop "$@" ;;
+    start) compose start "$@" ;;
+    restart) compose restart "$@" ;;
+    destroy) cmd_destroy "$@" ;;
+    build) compose build "$@" ;;
+    rebuild) compose build --no-cache "$@" ;;
+    ps|status) compose ps "$@" ;;
+    info|url) cmd_info ;;
+    logs) cmd_logs "$@" ;;
+    journal) cmd_journal "$@" ;;
+    services) cmd_services "$@" ;;
+    mysql) cmd_mysql "$@" ;;
+    shell|bash) cmd_shell ;;
+    exec) cmd_exec "$@" ;;
+    help|-h|--help) cmd_help ;;
+    *) die "unknown command '$cmd' — run 'docker/imscp help'" ;;
+esac
