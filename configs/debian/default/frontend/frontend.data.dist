@@ -23,7 +23,7 @@ HTTPD_PID_FILE = /var/run/nginx.pid
 ## PHP-FPM parameters
 #
 
-PHP_FPM_BIN_PATH = /usr/sbin/php-fpm7.3
+PHP_FPM_BIN_PATH = /usr/sbin/php-fpm7.4
 PHP_PEAR_DIR = /usr/share/php
 PHP_FPM_MAX_CHILDREN = 5
 PHP_FPM_MAX_REQUESTS = 1000
