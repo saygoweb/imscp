@@ -929,6 +929,16 @@ sub _init
 
 =cut
 
+# Parameters in frontend.data that describe the distribution rather than the
+# operator's choices. The merge below preserves the production value for every
+# parameter the two files share, which is right for a port or a host name the
+# operator answered for, and wrong for these: shipping a new value for one of
+# them in frontend.data.dist is the entire reason the file was changed, so the
+# old value must not win. Without this, a PHP version change reaches a fresh
+# install and no existing one, and the installation keeps calling a PHP-FPM
+# binary the distribution no longer means it to use.
+my %DISTRIBUTION_OWNED = map { $_ => TRUE } qw/ PHP_FPM_BIN_PATH PHP_PEAR_DIR /;
+
 sub _mergeConfig
 {
     my ( $self ) = @_;
@@ -943,6 +953,7 @@ sub _mergeConfig
 
         while ( my ( $key, $value ) = each( %oldConfig ) ) {
             next unless exists $newConfig{$key};
+            next if $DISTRIBUTION_OWNED{$key};
             $newConfig{$key} = $value;
         }
 

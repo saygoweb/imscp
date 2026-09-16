@@ -386,11 +386,27 @@ cmd_install() {
     info "installing i-MSCP — this takes 20-40 minutes on a first run"
     local env_args
     preseed_env_args
+
+    # A re-install cannot run with this stack's plugins in place. The installer
+    # trips over the symlinks while it stages the new tree, and then over the
+    # database rows that name directories it has just moved aside — see the
+    # header of plugins-detach.sh for both failures in full. So the plugins come
+    # out first and go back at the end.
+    c_exec "$SERVICE" sh "$CONTAINER_SCRIPTS/plugins-detach.sh"
+
     # Interactive-capable (no -T) so progress is streamed as it happens.
-    c_exec_tty "${env_args[@]}" "$SERVICE" sh "$CONTAINER_SCRIPTS/install-imscp.sh" "$@"
+    local rc=0
+    c_exec_tty "${env_args[@]}" "$SERVICE" \
+        sh "$CONTAINER_SCRIPTS/install-imscp.sh" "$@" || rc=$?
+
     # install-imscp.sh links gui/ and engine/, but the plugin list lives out here
-    # on the host, so the plugins still have to be linked in.
+    # on the host, so the plugins still have to be linked in. Both this and the
+    # row restore run even when the installer failed: a failed install is a bad
+    # reason to leave the tree unlinked and the plugin table empty.
     cmd_link
+    c_exec "$SERVICE" sh "$CONTAINER_SCRIPTS/plugins-reattach.sh"
+
+    [ "$rc" -eq 0 ] || die "the installer failed (exit $rc); plugins have been restored"
 }
 
 # plugin_specs runs in a command substitution, where its die() would only kill
