@@ -52,7 +52,7 @@
   "minimum-stability": "stable",
   "prefer-stable": true,
   "require": {
-    "php": ">=7.3 <7.4",
+    "php": ">=7.4 <8.0",
     "ext-apc": "*",
     "ext-apcu": "*",
     "ext-bz2": "*",
