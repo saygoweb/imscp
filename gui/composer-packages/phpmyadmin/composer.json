@@ -1,0 +1,29 @@
+{
+  "name": "imscp/phpmyadmin",
+  "version": "2.0.0",
+  "type": "imscp-tool",
+  "license": "LGPL-2.1-only",
+  "description": "Provides the PhpMyAdmin SQL administration tool for i-MSCP",
+  "keywords": [
+    "iMSCP",
+    "tools",
+    "sql",
+    "phpmyadmin"
+  ],
+  "homepage": "https://www.i-mscp.net/",
+  "authors": [
+    {
+      "name": "Laurent Declercq",
+      "email": "l.declercq@nuxwin.com",
+      "homepage": "https://www.i-mscp.net"
+    }
+  ],
+  "config": {
+    "sort-packages": true
+  },
+  "require": {
+    "php": "^7.2.5",
+    "imscp/composer-installers": "^1.0",
+    "phpmyadmin/phpmyadmin": "5.2.3"
+  }
+}

@@ -30,8 +30,36 @@
       }
     },
     {
+      "type": "package",
+      "package": {
+        "name": "phpmyadmin/phpmyadmin",
+        "version": "5.2.3",
+        "type": "library",
+        "description": "phpMyAdmin release archive, with its own vendor directory",
+        "license": "GPL-2.0-only",
+        "dist": {
+          "type": "zip",
+          "url": "https://files.phpmyadmin.net/phpMyAdmin/5.2.3/phpMyAdmin-5.2.3-all-languages.zip",
+          "shasum": "6d5c14749baae0409523e823b0d48a107ac69e6b"
+        }
+      }
+    },
+    {
+      "type": "path",
+      "url": "composer-packages/phpmyadmin",
+      "options": {
+        "symlink": false
+      }
+    },
+    {
       "type": "vcs",
-      "url": "https://github.com/saygoweb/roundcube.git"
+      "url": "https://github.com/saygoweb/rainloop.git",
+      "no-api": true
+    },
+    {
+      "type": "vcs",
+      "url": "https://github.com/saygoweb/roundcube.git",
+      "no-api": true
     }
   ],
   "config": {

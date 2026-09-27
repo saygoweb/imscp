@@ -42,6 +42,9 @@ use subs qw/
     predisableMail disableMail postdisableMail
 /;
 
+# Resolved from the saygoweb/rainloop fork declared as a vcs repository in
+# gui/composer.json. The i-MSCP/rainloop repository is gone, so the Packagist
+# releases can no longer be downloaded; the fork carries the same 1.0.x tags.
 my $packageVersionConstraint = $ENV{'IMSCP_PKG_DEVELOPMENT'}
     ? 'dev-dev' : '^1.0';
 
