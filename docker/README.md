@@ -144,6 +144,11 @@ already installed: `ghcr.io/saygoweb/imscp-ci:bookworm`.
   and `docker commit`s it. `.github/workflows/ci-image.yml` runs it on every
   change to `main` that could change the installation, weekly, and for pull
   requests (as `:pr-<number>`), then pushes the result.
+- `docker/ci/prune-images.sh` keeps the registry from growing without end:
+  after every build it deletes untagged versions, `pr-<n>` images of closed
+  pull requests and all but the newest three `bookworm-<sha>`; `bookworm` is
+  never touched. A closing pull request's `pr-<n>` goes at once. Try it with
+  `--dry-run`, or run `CI image` by hand with the dry-run box ticked.
 - `docker/ci/plugin-test.sh` boots that image with a directory of plugin
   checkouts mounted at `/var/www/imscp-plugins`, attaches one plugin with
   `docker/scripts/ci-attach-plugin.sh` (link, install and enable through the
