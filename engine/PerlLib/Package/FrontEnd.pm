@@ -143,7 +143,11 @@ EOT
             $composer->setStdRoutines( $stdRoutine, $stdRoutine );
             $composer->installComposer( $::imscpConfig{'COMPOSER_VERSION'} );
             $composer->clearCache() if iMSCP::Getopt->clearComposerCache;
-            $composer->update( TRUE, FALSE, 'imscp/*' );
+            # The dependencies of the imscp/* packages have to be allowed to
+            # move with them, or a package whose requirements changed (such as
+            # imscp/phpmyadmin moving from PhpMyAdmin 4.9 to 5.2) would stay
+            # pinned to what the lock file holds for them.
+            $composer->update( TRUE, FALSE, '--with-dependencies', 'imscp/*' );
             endDetail;
         };
         if ( $@ ) {

@@ -38,8 +38,12 @@ use subs qw/
     setGuiPermissions setEnginePermissions
 /;
 
-my $packageVersionConstraint = $ENV{'IMSCP_PKG_DEVELOPMENT'}
-    ? '4.8.x-dev' : '^1.0';
+# Resolved from the copy carried in gui/composer-packages/phpmyadmin, declared
+# as a path repository in gui/composer.json. The i-MSCP/phpmyadmin repository
+# is gone, so the Packagist releases (1.x) can no longer be downloaded. 2.x
+# pulls the upstream PhpMyAdmin 5.2 release archive rather than 4.9 (see
+# gui/composer-packages/phpmyadmin/README.md).
+my $packageVersionConstraint = '^2.0';
 
 =head1 DESCRIPTION
 
@@ -107,18 +111,6 @@ sub registerSetupListeners
                 composer_home => "$::imscpConfig{'GUI_ROOT_DIR'}/data/persistent/.composer",
                 composer_json => 'composer.json'
             );
-
-            if ( $ENV{'IMSCP_PKG_DEVELOPMENT'}
-                && -d '/github/official/imscp-phpmyadmin'
-            ) {
-                push @{ $composer->getComposerJson( TRUE )->{'repositories'} }, {
-                    type    => 'path',
-                    url     => '/github/official/imscp-phpmyadmin',
-                    options => {
-                        symlink => JSON::false
-                    }
-                };
-            }
 
             $composer->require( 'imscp/phpmyadmin', $packageVersionConstraint );
             $composer->dumpComposerJson();
