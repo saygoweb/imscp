@@ -55,7 +55,7 @@ jobs:
     timeout-minutes: 90
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The build image, the installed container and the commit together need
       # more than the runner leaves free.
@@ -81,7 +81,7 @@ jobs:
           set -- ${{ steps.tags.outputs.tags }}
           docker/ci/smoke-test.sh "$1"
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
