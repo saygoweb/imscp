@@ -11,6 +11,7 @@
 #     values from the environment rather than needing to be edited.
 #   * Afterwards the installed tree is linked back to the checkout by
 #     link-dev-tree.sh, which is where the development part actually happens.
+#     IMSCP_LINK=no skips that, for the CI image.
 #
 # Called by `docker/imscp install`. Expect 20-40 minutes on a first run: it is a
 # full hosting stack coming down from the Debian and sury archives.
@@ -62,7 +63,14 @@ log "running the i-MSCP installer"
 cd "$GIT_ROOT"
 perl ./imscp-autoinstall --debug --verbose --noprompt --preseed "$PRESEED" "$@"
 
-log "linking the installed tree back to the checkout"
-sh "$HERE/link-dev-tree.sh"
+# A CI image wants the opposite: a self-contained installation that can be
+# committed and run with no checkout behind it, so it skips the link. See
+# docker/ci/build-image.sh.
+if [ "${IMSCP_LINK:-yes}" = no ]; then
+    log "leaving the installed tree self-contained (IMSCP_LINK=no)"
+else
+    log "linking the installed tree back to the checkout"
+    sh "$HERE/link-dev-tree.sh"
+fi
 
 log "i-MSCP installed"

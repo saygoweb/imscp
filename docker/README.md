@@ -133,6 +133,42 @@ Installing and activating a plugin is still done in the panel, under
 *System tools → Plugin management*: hit the update/sync action there and the
 linked plugins appear, ready to install, exactly as on a real server.
 
+## Plugin CI
+
+The same server backs the plugins' GitHub Actions, as an image with i-MSCP
+already installed: `ghcr.io/saygoweb/imscp-ci:bookworm`.
+
+- `docker/ci/build-image.sh <tag>` boots the development image, installs i-MSCP
+  into it with `IMSCP_LINK=no` — so the installation is self-contained rather
+  than linked to a checkout that a commit could not capture — stops it cleanly
+  and `docker commit`s it. `.github/workflows/ci-image.yml` runs it on every
+  change to `main` that could change the installation, weekly, and for pull
+  requests (as `:pr-<number>`), then pushes the result.
+- `docker/ci/plugin-test.sh` boots that image with a directory of plugin
+  checkouts mounted at `/var/www/imscp-plugins`, attaches one plugin with
+  `docker/scripts/ci-attach-plugin.sh` (link, install and enable through the
+  panel's plugin manager, fail unless it ends up enabled), and runs the
+  plugin's test command in its directory.
+- `.github/workflows/plugin-test.yml` is the reusable workflow a plugin calls:
+
+  ```yaml
+  jobs:
+    test:
+      uses: saygoweb/imscp/.github/workflows/plugin-test.yml@main
+      with:
+        test: cd test/backend && perl all.t
+  ```
+
+Reproduce a plugin's CI run locally from this checkout, against the published
+image or one you built:
+
+```shell
+docker/ci/build-image.sh imscp-ci:local       # optional, 20-40 minutes
+docker/ci/plugin-test.sh --image imscp-ci:local .. imscp-php-version -- 'cd test/backend && perl all.t'
+```
+
+Add `--keep` to leave the container running for a look inside.
+
 ## Everyday use
 
 | | |

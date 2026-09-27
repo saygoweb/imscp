@@ -1,0 +1,91 @@
+name: Plugin test
+
+# Reusable: runs an i-MSCP plugin's tests on an installed server, booted from
+# the CI image ci-image.yml publishes. A plugin calls it with
+#
+#   jobs:
+#     test:
+#       uses: saygoweb/imscp/.github/workflows/plugin-test.yml@main
+#       with:
+#         test: cd test/backend && perl all.t
+#
+# The plugin checkout is mounted at /var/www/imscp-plugins/<repository name>,
+# linked into the panel, installed and enabled (unless install is false), and
+# then `test` runs as root from its directory. docker/ci/plugin-test.sh is the
+# whole of it, and reproduces a job locally.
+
+on:
+  workflow_call:
+    inputs:
+      test:
+        description: Test command, run with sh -c from the plugin directory inside the container
+        type: string
+        required: true
+      setup:
+        description: Command run before the plugin is installed (e.g. Composer install)
+        type: string
+        default: ''
+      install:
+        description: Install and enable the plugin through the panel before testing
+        type: boolean
+        default: true
+      image:
+        description: The CI image to boot
+        type: string
+        default: ghcr.io/saygoweb/imscp-ci:bookworm
+      imscp-ref:
+        description: The saygoweb/imscp ref whose docker/ci scripts drive the run
+        type: string
+        default: main
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: plugins/${{ github.event.repository.name }}
+
+      - uses: actions/checkout@v4
+        with:
+          repository: saygoweb/imscp
+          ref: ${{ inputs.imscp-ref }}
+          path: imscp
+          sparse-checkout: docker/ci
+
+      - name: Composer cache
+        if: hashFiles(format('plugins/{0}/composer.lock', github.event.repository.name)) != ''
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/composer-cache
+          key: composer-${{ hashFiles(format('plugins/{0}/composer.lock', github.event.repository.name)) }}
+          restore-keys: composer-
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull the CI image
+        run: docker pull "${{ inputs.image }}"
+
+      - name: Test
+        env:
+          COMPOSER_CACHE_DIR: ${{ runner.temp }}/composer-cache
+          IMSCP_CI_IMAGE: ${{ inputs.image }}
+          SETUP: ${{ inputs.setup }}
+          TEST: ${{ inputs.test }}
+          INSTALL: ${{ inputs.install }}
+        run: |
+          args=()
+          [ -n "$SETUP" ] && args+=(--setup "$SETUP")
+          [ "$INSTALL" = true ] || args+=(--no-install)
+          imscp/docker/ci/plugin-test.sh "${args[@]}" \
+              plugins "${{ github.event.repository.name }}" -- "$TEST"
