@@ -9,6 +9,10 @@ name: CI image
 #   a same-repo PR       -> :pr-<number>, for trying plugin CI against the change
 #   weekly               -> :bookworm again, so the image does not fall behind
 #                           the Debian and sury archives
+#
+# Old images are pruned by docker/ci/prune-images.sh: after every build, and
+# for a pull request's :pr-<number> as soon as the pull request closes. See
+# that script for what is kept.
 
 on:
   push:
@@ -23,6 +27,8 @@ on:
       - imscp-autoinstall
       - .github/workflows/ci-image.yml
   pull_request:
+    # closed: to drop the pull request's image.
+    types: [opened, synchronize, reopened, closed]
     paths:
       - autoinstaller/**
       - configs/**
@@ -34,10 +40,17 @@ on:
   schedule:
     - cron: '17 3 * * 1'
   workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Only report what the prune would delete
+        type: boolean
+        default: false
 
 permissions:
   contents: read
   packages: write
+  # prune-images.sh reads which pull requests are still open.
+  pull-requests: read
 
 concurrency:
   group: ci-image-${{ github.ref }}
@@ -49,8 +62,11 @@ env:
 jobs:
   build:
     # A fork's pull request gets no package write token; there is nothing to
-    # publish it to.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # publish it to. A closing pull request has nothing left to build.
+    if: >-
+      github.event_name != 'pull_request'
+      || (github.event.pull_request.head.repo.full_name == github.repository
+          && github.event.action != 'closed')
     runs-on: ubuntu-24.04
     timeout-minutes: 90
 
@@ -92,3 +108,44 @@ jobs:
           for tag in ${{ steps.tags.outputs.tags }}; do
               docker push "$tag"
           done
+
+  # Runs after every build, successful or not: a failed build can still leave
+  # an untagged version behind. On a pull request it only reports, which checks
+  # the API calls and permissions before anything is deleted for real.
+  prune:
+    needs: build
+    if: ${{ !cancelled() && needs.build.result != 'skipped' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: docker/ci
+
+      - name: Prune old images
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ github.event_name == 'pull_request' || inputs.dry-run == true }}
+        run: |
+          args=()
+          [ "$DRY_RUN" = true ] && args+=(--dry-run)
+          docker/ci/prune-images.sh "${args[@]}"
+
+  drop-pr-image:
+    if: >-
+      github.event_name == 'pull_request'
+      && github.event.action == 'closed'
+      && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: docker/ci
+
+      - name: Delete this pull request's image
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: docker/ci/prune-images.sh --pr ${{ github.event.pull_request.number }}
