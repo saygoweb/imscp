@@ -52,8 +52,13 @@ permissions:
   # prune-images.sh reads which pull requests are still open.
   pull-requests: read
 
+# One group per pull request, keyed on its number: when a pull request closes,
+# github.ref is the base branch, so a group keyed on the ref put the closing
+# run beside the merge's own build on main and cancelled that build. Keyed on
+# the number, a closing pull request only cancels its own pr-<n> build, which
+# is about to be deleted anyway.
 concurrency:
-  group: ci-image-${{ github.ref }}
+  group: ci-image-${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.ref }}
   cancel-in-progress: true
 
 env:
