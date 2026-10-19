@@ -314,7 +314,14 @@ sub copyFile
     # editing whatever it happens to point at, so remove the symlink and let
     # the copy create a real file in its place. This also lets a symlink be
     # copied over one that already exists, which symlink() alone refuses.
-    my $dstPath = -d $dst
+    #
+    # A symlink is always created at $dst itself (see symlink() below), so
+    # when the source is a symlink and $dst is one too, $dst is the link to
+    # replace, even where -d follows it to a directory. Taking that directory
+    # as the place to copy into left the link standing, and symlink() failed
+    # with "File exists": rcopy() over a tree already staged once, such as
+    # roundcube's public_html/program/js -> ../../program/js.
+    my $dstPath = -d $dst && !( S_ISLNK( $mode ) && -l $dst )
         ? File::Spec->catfile( $dst, basename( $self->{'filename'} )) : $dst;
 
     if ( -l $dstPath && !unlink( $dstPath ) ) {
