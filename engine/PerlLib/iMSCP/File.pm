@@ -315,8 +315,7 @@ sub copyFile
     # the copy create a real file in its place. This also lets a symlink be
     # copied over one that already exists, which symlink() alone refuses.
     #
-    # A symlink is always created at $dst itself (see symlink() below), so
-    # when the source is a symlink and $dst is one too, $dst is the link to
+    # When the source is a symlink and $dst is one too, $dst is the link to
     # replace, even where -d follows it to a directory. Taking that directory
     # as the place to copy into left the link standing, and symlink() failed
     # with "File exists": rcopy() over a tree already staged once, such as
@@ -324,6 +323,11 @@ sub copyFile
     my $dstPath = -d $dst && !( S_ISLNK( $mode ) && -l $dst )
         ? File::Spec->catfile( $dst, basename( $self->{'filename'} )) : $dst;
 
+    # From here on, $dstPath is what gets written: the link, the copy, and the
+    # ownership and mode. Acting on $dst instead, where it is a directory, gave
+    # the directory the source's owner and mode (a 0644 source left it without
+    # its execute bit) and tried to create a symlink at the directory's own
+    # path.
     if ( -l $dstPath && !unlink( $dstPath ) ) {
         error( sprintf(
             "Couldn't remove the '%s' symlink: %s", $dstPath, $!
@@ -334,20 +338,20 @@ sub copyFile
     if ( S_ISLNK $mode ) {
         my $lnkTarget = readlink( $self->{'filename'} );
 
-        unless ( symlink( $lnkTarget, $dst ) ) {
+        unless ( symlink( $lnkTarget, $dstPath ) ) {
             error( sprintf(
                 "Couldn't copy the '%s' symlink to '%s': %s",
                 $self->{'filename'},
-                $dst,
+                $dstPath,
                 $!
             ));
             return 1;
         }
-    } elsif ( !copy( $self->{'filename'}, $dst ) ) {
+    } elsif ( !copy( $self->{'filename'}, $dstPath ) ) {
         error( sprintf(
             "Couldn't copy the '%s' file to '%s': %s",
             $self->{'filename'},
-            $dst,
+            $dstPath,
             $!
         ));
         return 1;
@@ -355,18 +359,18 @@ sub copyFile
 
     return 0 if defined $options->{'preserve'} && $options->{'preserve'} eq 'no';
 
-    unless ( lchown( $uid, $gid, $dst ) ) {
+    unless ( lchown( $uid, $gid, $dstPath ) ) {
         error( sprintf(
-            "Couldn't change the '%s' file ownership: %s", $dst, $!
+            "Couldn't change the '%s' file ownership: %s", $dstPath, $!
         ));
         return 1;
     }
 
     return 0 if S_ISLNK $mode; # We do not call chmod on symlinks
 
-    unless ( chmod( $mode & 07777, $dst ) ) {
+    unless ( chmod( $mode & 07777, $dstPath ) ) {
         error( sprintf(
-            "Couldn't change  the '%s' file permissions: %s", $dst, $!
+            "Couldn't change  the '%s' file permissions: %s", $dstPath, $!
         ));
         return 1;
     }
