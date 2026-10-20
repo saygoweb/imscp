@@ -37,3 +37,11 @@ log "database answers"
 docker exec "$CONTAINER" sudo -u vu2000 php7.4 -r \
     'require "/var/www/imscp/gui/include/imscp-lib.php"; echo "panel bootstrapped\n";' \
     || die "the panel does not bootstrap"
+
+# The panel opens these server configuration files itself (SQL database and
+# user pages, mail pages, PHP editor) through the i-MSCP group; see #16.
+for file in mysql/mysql.data postfix/postfix.data php/php.data; do
+    docker exec "$CONTAINER" sudo -u vu2000 test -r "/etc/imscp/$file" \
+        || die "the panel cannot read /etc/imscp/$file"
+done
+log "panel can read the server configuration files"

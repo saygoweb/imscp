@@ -36,6 +36,7 @@ use iMSCP::File;
 use iMSCP::Getopt;
 use iMSCP::Packages;
 use iMSCP::Plugins;
+use iMSCP::Rights 'setRights';
 use iMSCP::Servers;
 use iMSCP::Service;
 use iMSCP::Stepper qw/ step endDetail startDetail /;
@@ -264,6 +265,27 @@ sub setupCreateMasterUser
         error( $@ );
         return 1;
     }
+
+    # Give the configuration directory its base permissions now, rather than
+    # only in setupSetPermissions at the end of the run.
+    #
+    # By this point the servers and packages have already replaced their
+    # production .data files with the new .data.dist ones (see their
+    # _mergeConfig() methods, called when they are first instantiated). The
+    # .dist files are installed root:root, so until set-engine-permissions.pl
+    # runs, files such as mysql/mysql.data are root:root and the panel, which
+    # reads them through the i-MSCP group, cannot open them. A run that fails
+    # anywhere in between, in setupServersAndPackages for instance, left them
+    # that way. The i-MSCP group exists from here on, so apply the same rule
+    # as set-engine-permissions.pl does for CONF_DIR.
+    $rs = setRights( $::imscpConfig{'CONF_DIR'}, {
+        user      => $::imscpConfig{'ROOT_USER'},
+        group     => $::imscpConfig{'IMSCP_GROUP'},
+        dirmode   => '0750',
+        filemode  => '0640',
+        recursive => TRUE
+    } );
+    return $rs if $rs;
 
     iMSCP::EventManager->getInstance()->trigger(
         'afterSetupCreateMasterUser'
