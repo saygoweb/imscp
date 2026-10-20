@@ -445,8 +445,8 @@ sub deleteSub
     return $rs if $rs;
 
     ${ $fileC } = replaceBloc(
-        "; sub [$data->{'DOMAIN_NAME'}] entry BEGIN\n",
-        "; sub [$data->{'DOMAIN_NAME'}] entry ENDING\n",
+        "; subdomain [$data->{'DOMAIN_NAME'}] records BEGIN\n",
+        "; subdomain [$data->{'DOMAIN_NAME'}] records ENDING\n",
         '',
         ${ $fileC }
     );

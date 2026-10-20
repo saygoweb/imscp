@@ -124,18 +124,18 @@ iMSCP::EventManager->getInstance()->register(
         }
 
         ${ $wrkDbFileContent } = replaceBloc(
-            "; sub [$data->{'DOMAIN_NAME'}] entry BEGIN\n",
-            "; sub [$data->{'DOMAIN_NAME'}] entry ENDING\n",
-            "; sub [$data->{'DOMAIN_NAME'}] entry BEGIN\n"
+            "; subdomain [$data->{'DOMAIN_NAME'}] records BEGIN\n",
+            "; subdomain [$data->{'DOMAIN_NAME'}] records ENDING\n",
+            "; subdomain [$data->{'DOMAIN_NAME'}] records BEGIN\n"
                 . getBloc(
-                "; sub [$data->{'DOMAIN_NAME'}] entry BEGIN\n",
-                "; sub [$data->{'DOMAIN_NAME'}] entry ENDING\n",
+                "; subdomain [$data->{'DOMAIN_NAME'}] records BEGIN\n",
+                "; subdomain [$data->{'DOMAIN_NAME'}] records ENDING\n",
                 ${ $wrkDbFileContent }
             )
                 . "; dualstack DNS records BEGIN\n"
                 . join( '', @formattedEntries )
                 . "; dualstack DNS records END\n"
-                . "; sub [$data->{'DOMAIN_NAME'}] entry ENDING\n",
+                . "; subdomain [$data->{'DOMAIN_NAME'}] records ENDING\n",
             ${ $wrkDbFileContent }
         );
 
