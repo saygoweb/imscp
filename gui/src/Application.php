@@ -421,7 +421,7 @@ class Application
         // Captcha background color
         $this->config['LOSTPASSWORD_CAPTCHA_BGCOLOR'] = [176, 222, 245];
         // Captcha text color
-        $this->config['LOSTPASSWORD_CAPTCHA_TEXTCOLOR'] = [1, 53, 920];
+        $this->config['LOSTPASSWORD_CAPTCHA_TEXTCOLOR'] = [1, 53, 92];
         // Captcha image width
         $this->config['LOSTPASSWORD_CAPTCHA_WIDTH'] = 276;
         // Captcha image height
