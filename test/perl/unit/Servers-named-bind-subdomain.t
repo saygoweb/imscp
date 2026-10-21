@@ -2,31 +2,22 @@
 
 # Servers::named::bind: deleteSub() removes the block addSub() wrote.
 #
-# Runs from the repository root without an installed server:
+#   test/run.sh unit
 #
-#   prove -Iengine/PerlLib -Iengine/PerlVendor test/perl
-#
-# The zone is built from the shipped db.tpl and db_sub.tpl. Events and zone
-# compilation are stubbed; everything else is the real code path.
+# The zone is built from the shipped db.tpl and db_sub.tpl. Events, the address
+# checks and zone compilation are stubbed; everything else is the real code
+# path, and no command may reach the shell.
 
 use strict;
 use warnings;
-use FindBin;
-use File::Temp qw/ tempdir /;
 use Test::More;
 use iMSCP::File;
 use iMSCP::TemplateParser qw/ process /;
-use Servers::named::bind;
+use iMSCPTest::Stub qw/ :all /;
 
-my $tplDir = "$FindBin::Bin/../../configs/debian/default/bind/parts";
-my $wrkDir = tempdir( CLEANUP => 1 );
+my $tplDir = config_path( 'bind/parts' );
+my $wrkDir = sandbox();
 my $parent = 'example.test';
-
-{
-    package StubEvents;
-    sub new { bless {}, shift }
-    sub trigger { 0 }
-}
 
 {
     # IPv4 documentation addresses only; avoids needing Data::Validate::IP
@@ -36,19 +27,19 @@ my $parent = 'example.test';
     sub isRoutableAddr { 1 }
 }
 
-no warnings qw/ redefine once /;
-local *Servers::named::bind::_compileZone = sub { 0 };
-local *iMSCP::Net::getInstance = sub { StubNet->new() };
-use warnings qw/ redefine once /;
+my $events = stub_events();
+my $exec = stub_execute();
+my $net = stub_singleton( 'iMSCP::Net', StubNet->new() );
 
-my $named = bless {
+my $named = new_server(
+    'Servers::named::bind',
     config  => { BIND_MODE => 'master' },
-    events  => StubEvents->new(),
     tplDir  => $tplDir,
     wrkDir  => $wrkDir,
     serials => { $parent => 1 },
     reload  => 0
-}, 'Servers::named::bind';
+);
+my $compile = stub_method( 'Servers::named::bind', '_compileZone', sub { 0 } );
 
 sub zone
 {
@@ -98,5 +89,6 @@ like(
     qr/^; subdomain \[\{SUBDOMAIN_NAME\}\] records BEGIN\n; subdomain \[\{SUBDOMAIN_NAME\}\] records ENDING$/m,
     'deleteSub leaves the insertion point for the next subdomain'
 );
+is_deeply( [ $exec->commands ], [], 'no command reached the shell' );
 
 done_testing();
