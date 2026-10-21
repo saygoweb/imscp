@@ -28,3 +28,4 @@ gui/plugins/*
 
 # docker/ development stack: per-checkout settings (ports, plugin list).
 /docker/.env
+/cover_db/
