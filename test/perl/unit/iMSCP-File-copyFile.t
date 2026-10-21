@@ -4,18 +4,17 @@
 #
 # Run from the repository root:
 #
-#   prove -Iengine/PerlLib -Iengine/PerlVendor test/perl
+#   test/run.sh unit
 #
 # Runs as an ordinary user: ownership is preserved to the caller's own uid and
 # gid, which lchown() allows without privileges.
 
 use strict;
 use warnings;
-use File::Temp qw/ tempdir /;
-use File::Find qw/ finddepth /;
 use Test::More;
 use iMSCP::Debug qw/ getMessageByType /;
 use iMSCP::File;
+use iMSCPTest::Stub qw/ sandbox /;
 
 # Record which paths copyFile() hands to lchown(): run unprivileged, it can
 # only chown to our own ids, which changes nothing that could be checked.
@@ -26,7 +25,7 @@ my @lchowned;
     no warnings 'redefine';
     my $real = eval { require Lchown; \&Lchown::lchown };
     $INC{'Lchown.pm'} //= __FILE__;
-    *Lchown::lchown = sub {
+    *Lchown::lchown = sub (@) {
         my ( $uid, $gid, @paths ) = @_;
         push @lchowned, @paths;
         return $real->( $uid, $gid, @paths ) if $real;
@@ -34,17 +33,7 @@ my @lchowned;
     };
 }
 
-my $tmp = tempdir( 'imscp-copyfile-XXXXXX', TMPDIR => 1 );
-
-# A failing case can leave a directory without its execute bit; give every
-# directory its permissions back so that it can be removed.
-END {
-    if ( defined $tmp && -d $tmp ) {
-        chmod 0700, $tmp;
-        finddepth( { no_chdir => 1, wanted => sub { chmod 0700, $_ if !-l $_ && -d _ } }, $tmp );
-        system( 'rm', '-rf', '--', $tmp );
-    }
-}
+my $tmp = sandbox();
 
 sub mode { sprintf( '%04o', ( lstat( shift ) )[2] & 07777 ) }
 

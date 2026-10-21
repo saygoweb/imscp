@@ -1,0 +1,124 @@
+name: Test
+
+# The engine's tests; see test/perl/README.md.
+#
+#   unit         every pull request (forks included) and every push to main: the
+#                checkout mounted into the published CI image, which is not
+#                booted, so the tests see production's Perl and library versions
+#   ci-scripts   the tests of the docker/ci scripts and test/run.sh, on the runner
+#   integration  same-repo pull requests that change the integration tests, their
+#                kit or their runner, and that ci-image.yml does not already
+#                cover: the published image, booted, with the checkout's engine
+#                linked in. A change that ci-image.yml's paths match gets its
+#                integration tests there instead, on the image built from it.
+#                Fork pull requests get the unit tests only.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  IMSCP_CI_IMAGE: ghcr.io/saygoweb/imscp-ci:trixie
+
+jobs:
+  unit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull the CI image
+        run: docker pull "$IMSCP_CI_IMAGE"
+
+      # As nobody: unit tests must not need root, and root would hide the
+      # permission checks some of them make.
+      - name: Unit tests
+        run: |
+          mkdir -p "$RUNNER_TEMP/cover"
+          chmod 777 "$RUNNER_TEMP/cover"
+          docker run --rm --user 65534:65534 -e HOME=/tmp -e COVER_DIR=/cover \
+              --entrypoint sh -v "$PWD:/src:ro" -v "$RUNNER_TEMP/cover:/cover" -w /src \
+              "$IMSCP_CI_IMAGE" test/run.sh unit --cover
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: coverage
+          path: ${{ runner.temp }}/cover/html
+          if-no-files-found: ignore
+
+  ci-scripts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+      - name: CI script tests
+        run: sh test/run.sh ci
+
+  changes:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    outputs:
+      integration: ${{ steps.diff.outputs.integration }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # integration=true when the pull request changes something the
+      # integration tests depend on and nothing that ci-image.yml builds the
+      # image for: with both, ci-image.yml already runs them.
+      - id: diff
+        run: |
+          files="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
+          printf '%s\n' "$files"
+          # The pull_request paths: of ci-image.yml. The two lists must agree.
+          image='^(autoinstaller|configs|docker|engine|gui)/|^imscp-autoinstall$|^\.github/workflows/ci-image\.yml$'
+          relevant='^(test/perl/(integration|lib)/|test/run\.sh$|docker/ci/engine-test\.sh$|\.github/workflows/test\.yml$)'
+          if printf '%s\n' "$files" | grep -qE "$relevant" \
+              && ! printf '%s\n' "$files" | grep -qE "$image"
+          then
+              echo "integration=true" >> "$GITHUB_OUTPUT"
+          else
+              echo "integration=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  integration:
+    needs: changes
+    # Not a fork: it has no access to the image registry.
+    if: >-
+      needs.changes.outputs.integration == 'true'
+      && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull the CI image
+        run: docker pull "$IMSCP_CI_IMAGE"
+
+      - name: Integration tests
+        run: docker/ci/engine-test.sh --image "$IMSCP_CI_IMAGE" --link

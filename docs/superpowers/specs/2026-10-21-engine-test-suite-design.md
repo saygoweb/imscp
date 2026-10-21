@@ -37,7 +37,9 @@ test/
   perl/
     README.md                  per-module coverage status
     lib/iMSCPTest/
-      Stub.pm                  unit kit
+      Guard.pm                 scope guard behind every stub
+      Stub.pm                  unit kit: the one import, `use iMSCPTest::Stub qw/ :all /`
+      Stub/{Symbol,Execute,DB,Config,Env}.pm   the kit's parts
       Fixture.pm               integration: panel-shaped rows
       Engine.pm                integration: run the engine, assert statuses
     unit/<Module-Path>.t       e.g. unit/iMSCP-File-copyFile.t
@@ -56,8 +58,8 @@ Shaped by three facts about the engine:
 - `execute()` is imported into each module's namespace by `use iMSCP::Execute`,
   so redefining `iMSCP::Execute::execute` misses the copies. `stub_execute()`
   walks the symbol table and replaces every alias of the real sub. It records
-  each call. Responses are given as a coderef or as `qr/…/ => [ exit, stdout,
-  stderr ]` pairs. A command that matches nothing fails the test, so nothing
+  each call. Responses are `qr/…/ => [ exit, stdout, stderr ]` or `qr/…/ => sub {…}`
+  pairs, and a catch-all is `qr/^/ => sub {…}`. A command that matches nothing fails the test, so nothing
   reaches the real shell.
 - Singletons (`Common::SingletonClass`, 61 classes) hold their instance in
   `${"Class::_instance"}`. `stub_singleton( Class => $obj )` sets that variable
@@ -77,7 +79,7 @@ Also:
 | `config_path( 'bind/parts/db.tpl' )` | the shipped template or config file for the suite, with the same fallback |
 | `stub_events( fail => $event )` | an `iMSCP::EventManager` stand-in that records `trigger` and returns 0, or 1 for `$event` |
 | `sandbox()` / `sandbox_path( $real )` | a temp dir, cleaned up even after a test removed a directory's permissions; real paths mapped into it |
-| `new_server( $class, %fields )` | a blessed instance with the constructor's fields and the stubs wired in |
+| `new_server( $class, %fields )` | a blessed instance with the fields the caller passes, `config` defaulting to `{}`, and the event stub wired in |
 | `debug_messages()` | what went through `iMSCP::Debug::error`, to assert why a call returned 1 |
 
 Every stub is restored when its enclosing scope or the test file ends.
@@ -125,7 +127,7 @@ the tests hold for whichever implementation is installed.
 
 | System | Green path |
 |---|---|
-| named | `dig @127.0.0.1` answers the domain's and the subdomain's A records; after delete, NXDOMAIN and no zone file |
+| named | `dig @127.0.0.1` answers the domain's and the subdomain's A records; after delete, no zone file, and the server still answers but no longer serves the names (so a stopped named fails the test rather than passing it) |
 | httpd | an HTTP request with `Host:` to 127.0.0.1 serves the default index; PHP executes |
 | mta, po | SMTP to the new mailbox is accepted and the message is read back over IMAP; a forward forwards |
 | ftpd | FTP login as the new user; an upload lands in the web directory |
@@ -146,11 +148,15 @@ and ends by deleting it, which also exercises the delete path.
 ```
 test/run.sh unit [--cover] [files…]     anywhere, any user
 test/run.sh integration [files…]        CI image only, as root
-test/run.sh all
+test/run.sh ci                          the tests of the CI scripts (test/ci)
+test/run.sh all                         unit, then integration
 ```
 
-- It adds `-Iengine/PerlLib -Iengine/PerlVendor -Itest/perl/lib` and `--timer`,
-  and passes `PROVE_ARGS` through. Unit tests run with `-j4`; integration tests
+- Unit tests add `-Iengine/PerlLib -Iengine/PerlVendor -Itest/perl/lib`.
+  Integration tests use the installed engine's `PerlLib` and `PerlVendor`
+  (`${IMSCP_ENGINE_DIR:-/var/www/imscp/engine}`), which is the checkout only
+  under `engine-test.sh --link`. Both add `--timer` and pass `PROVE_ARGS`
+  through. Unit tests run with `-j4`; integration tests
   run serially.
 - `--cover` runs the unit tests under `Devel::Cover` (`libdevel-cover-perl`).
 - `integration` refuses to run unless `/etc/imscp/ci-image` exists.
@@ -176,7 +182,7 @@ docker/ci/engine-test.sh [--image <ref>] [--link] [--keep] [-- test/run.sh args]
 |---|---|---|---|
 | `test.yml` (new) | unit | every PR, forks included; every push to main | the PR's checkout mounted into `:trixie`, not booted; HTML coverage report uploaded as an artifact |
 | `ci-image.yml` `build` | integration, a step after the smoke test and before push | whenever the image is rebuilt: same-repo PRs touching `engine/`, `configs/`, `gui/`…, main, weekly | the image just built. A build that fails is not pushed, so `:trixie` is never a broken engine. |
-| `test.yml` | integration | PRs that change only `test/**` | `:trixie` with `--link` |
+| `test.yml` | integration | same-repo PRs that change the integration tests, their kit or runner, and that `ci-image.yml` does not already cover | `:trixie` with `--link` |
 
 Fork PRs get unit tests only, as `ci-image.yml` already builds nothing for
 them. A failing weekly rebuild holds `:trixie` at its previous version until
