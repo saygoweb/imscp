@@ -6,10 +6,12 @@ name: Test
 #                checkout mounted into the published CI image, which is not
 #                booted, so the tests see production's Perl and library versions
 #   ci-scripts   the tests of the docker/ci scripts and test/run.sh, on the runner
-#   integration  pull requests that change only tests: the published image,
-#                booted, with the checkout's engine linked in. A change to the
-#                engine gets its integration tests in ci-image.yml instead, on
-#                the image built from it.
+#   integration  same-repo pull requests that change the integration tests, their
+#                kit or their runner, and that ci-image.yml does not already
+#                cover: the published image, booted, with the checkout's engine
+#                linked in. A change that ci-image.yml's paths match gets its
+#                integration tests there instead, on the image built from it.
+#                Fork pull requests get the unit tests only.
 
 on:
   pull_request:
@@ -72,31 +74,37 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     outputs:
-      tests-only: ${{ steps.diff.outputs.tests-only }}
+      integration: ${{ steps.diff.outputs.integration }}
 
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      # Tests only: every changed file is under test/, and some of them are
-      # integration tests or their kit.
+      # integration=true when the pull request changes something the
+      # integration tests depend on and nothing that ci-image.yml builds the
+      # image for: with both, ci-image.yml already runs them.
       - id: diff
         run: |
           files="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
           printf '%s\n' "$files"
-          if [ -n "$files" ] \
-              && ! printf '%s\n' "$files" | grep -qv '^test/' \
-              && printf '%s\n' "$files" | grep -qE '^test/(perl/(integration|lib)/|run\.sh$)'
+          # The pull_request paths: of ci-image.yml. The two lists must agree.
+          image='^(autoinstaller|configs|docker|engine|gui)/|^imscp-autoinstall$|^\.github/workflows/ci-image\.yml$'
+          relevant='^(test/perl/(integration|lib)/|test/run\.sh$|docker/ci/engine-test\.sh$|\.github/workflows/test\.yml$)'
+          if printf '%s\n' "$files" | grep -qE "$relevant" \
+              && ! printf '%s\n' "$files" | grep -qE "$image"
           then
-              echo "tests-only=true" >> "$GITHUB_OUTPUT"
+              echo "integration=true" >> "$GITHUB_OUTPUT"
           else
-              echo "tests-only=false" >> "$GITHUB_OUTPUT"
+              echo "integration=false" >> "$GITHUB_OUTPUT"
           fi
 
   integration:
     needs: changes
-    if: needs.changes.outputs.tests-only == 'true'
+    # Not a fork: it has no access to the image registry.
+    if: >-
+      needs.changes.outputs.integration == 'true'
+      && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 30
 

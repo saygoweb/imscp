@@ -19,6 +19,7 @@ use warnings;
 use Carp qw/ croak /;
 use Scalar::Util ();
 use Test::More ();
+use iMSCP::Debug ();
 use iMSCP::Execute ();
 use iMSCPTest::Guard;
 use parent 'Exporter';
@@ -54,6 +55,18 @@ sub stub_execute
     my $execute = sub {
         my ( $command, $stdout, $stderr ) = @_;
 
+        # The checks, and the debug() call, of the real execute().
+        defined( $command ) or die( 'Missing $command parameter' );
+        if ( $stdout ) {
+            ref $stdout eq 'SCALAR' or die( "Expects a scalar reference as second parameter STDOUT capture." );
+            ${ $stdout } = '';
+        }
+        if ( $stderr ) {
+            ref $stderr eq 'SCALAR' or die( "Expects a scalar reference as second parameter STDERR capture." );
+            ${ $stderr } = '';
+        }
+        iMSCP::Debug::debug( ref $command eq 'ARRAY' ? "@{ $command }" : $command );
+
         my ( $exit, $out, $err ) = $answer->( $command );
 
         # Output as the real execute() hands it back: both captures lose one
@@ -70,9 +83,14 @@ sub stub_execute
     my $executeNoWait = sub {
         my ( $command, $onStdout, $onStderr ) = @_;
 
-        my ( $exit, $out, $err ) = $answer->( $command );
         $onStdout //= sub { print STDOUT $_[0] };
         $onStderr //= sub { print STDERR $_[0] . "\n" };
+
+        ref $onStdout eq 'CODE' or croak( 'Invalid $subSTDOUT parameter. CODE expected.' );
+        ref $onStderr eq 'CODE' or croak( 'Invalid $subSTDERR parameter. CODE expected.' );
+        iMSCP::Debug::debug( ref $command eq 'ARRAY' ? "@{ $command }" : $command );
+
+        my ( $exit, $out, $err ) = $answer->( $command );
 
         # Lines arrive with their newline, a last line without one as it is.
         $onStdout->( $_ ) for $out =~ /\G([^\n]*\n|[^\n]+)/g;

@@ -54,6 +54,29 @@ my $real = \&iMSCP::Execute::execute;
     is_deeply( [ \@o, \@e ], [ [ "a\n", "\n", "b\n" ], [ "c\n", 'd' ] ], 'executeNoWait() splits like the real one, empty lines and a final partial line included' );
 }
 
+{
+    my $exec = stub_execute( qr/^echo / => [ 0, '', '' ] );
+
+    like( ( eval { execute( undef ); 1 } ? '' : $@ ), qr/Missing \$command parameter/, 'execute() without a command dies, as the real one does' );
+    like( ( eval { execute( 'echo x', 'not a ref' ); 1 } ? '' : $@ ), qr/Expects a scalar reference as second parameter STDOUT capture/, 'a stdout capture that is not a scalar reference dies' );
+    like( ( eval { execute( 'echo x', undef, [] ); 1 } ? '' : $@ ), qr/Expects a scalar reference as second parameter STDERR capture/, 'and so does a stderr capture' );
+    like( ( eval { executeNoWait( 'echo x', 'no' ); 1 } ? '' : $@ ), qr/Invalid \$subSTDOUT parameter. CODE expected/, 'executeNoWait() refuses a stdout callback that is not CODE' );
+    like( ( eval { executeNoWait( 'echo x', undef, 'no' ); 1 } ? '' : $@ ), qr/Invalid \$subSTDERR parameter. CODE expected/, 'and a stderr one' );
+    is_deeply( [ $exec->commands ], [], 'none of those reached the rules' );
+
+    my $out = 'old';
+    execute( 'echo x', \$out );
+    is( $out, '', 'a capture is emptied before the command answers' );
+
+    my @debug;
+    my $debug = stub_method( 'iMSCP::Debug', 'debug', sub { push @debug, $_[0]; undef } );
+    execute( 'echo one' );
+    execute( [ 'echo', 'two', 'words' ] );
+    executeNoWait( 'echo three' );
+    executeNoWait( [ 'echo', 'four' ] );
+    is_deeply( \@debug, [ 'echo one', 'echo two words', 'echo three', 'echo four' ], 'every command is logged through debug(), as the real functions do' );
+}
+
 is( \&Caller::execute, $real, 'the real execute() is back in the importing module' );
 is( \&Later::execute, $real, 'and in a module that imported the stub' );
 is( Caller::string()->[1], 'hi', 'and really runs' );

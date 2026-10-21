@@ -23,12 +23,22 @@ my $resolver = Net::DNS::Resolver->new(
 
 # The engine reloads the server as it finishes, and named loads zones in the
 # background, so give it a few seconds either way.
+#
+# undef when the server does not answer at all, which is not the same as
+# answering without an A record: a stopped or broken named must not look like
+# a name that is no longer served.
 sub a_records
 {
     my ( $name ) = @_;
 
-    my $reply = $resolver->send( $name, 'A' ) or return ();
-    map { $_->address } grep { $_->type eq 'A' } $reply->answer;
+    my $reply = $resolver->send( $name, 'A' ) or return undef;
+    [ map { $_->address } grep { $_->type eq 'A' } $reply->answer ];
+}
+
+sub served
+{
+    my $records = a_records( @_ );
+    $records && @{ $records } ? @{ $records } : ();
 }
 
 sub eventually
@@ -50,16 +60,17 @@ is_ok( $customer );
 is_ok( $sub );
 ok( -f "$zoneDir/$customer->{'name'}.db", 'the zone file is written' );
 
-ok( eventually( sub { a_records( $customer->{'name'} ) } ), "$customer->{'name'} answers an A record" );
-my @domainA = a_records( $customer->{'name'} );
-ok( eventually( sub { a_records( $sub->{'name'} ) } ), "$sub->{'name'} answers an A record" );
-is_deeply( [ a_records( $sub->{'name'} ) ], \@domainA, 'at the domain\'s address' );
+ok( eventually( sub { served( $customer->{'name'} ) } ), "$customer->{'name'} answers an A record" );
+my @domainA = served( $customer->{'name'} );
+ok( eventually( sub { served( $sub->{'name'} ) } ), "$sub->{'name'} answers an A record" );
+is_deeply( [ served( $sub->{'name'} ) ], \@domainA, 'at the domain\'s address' );
 
 schedule( $_, 'todelete' ) for $sub, $customer;
 run_engine() or BAIL_OUT( 'the engine could not delete the customer' );
 is_gone( $sub );
 is_gone( $customer );
 ok( !-e "$zoneDir/$customer->{'name'}.db", 'the zone file is removed' );
-ok( eventually( sub { !a_records( $customer->{'name'} ) } ), 'the domain is no longer served' );
+ok( eventually( sub { my $records = a_records( $customer->{'name'} ); $records && !@{ $records } } ),
+    'the server answers, and no longer serves the domain' );
 
 done_testing();

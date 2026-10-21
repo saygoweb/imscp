@@ -47,8 +47,8 @@ documented error return, has at least one test.
 
 | Module | Status | Tests |
 |---|---|---|
-| `iMSCP::File` | partial | `unit/iMSCP-File-copyFile.t` |
-| `Servers::named::bind` | partial | `unit/Servers-named-bind-subdomain.t`, `integration/named.t` |
+| `iMSCP::File` | partial | [unit/iMSCP-File-copyFile.t](unit/iMSCP-File-copyFile.t) |
+| `Servers::named::bind` | partial | [unit/Servers-named-bind-subdomain.t](unit/Servers-named-bind-subdomain.t), [integration/named.t](integration/named.t) |
 
 A test that finds a bug goes in as a `TODO` test that cites an issue; the fix
 goes in its own pull request, which removes the `TODO`.

@@ -47,6 +47,31 @@ is_deeply( \%main::imscpConfig, { BEFORE => 1 }, 'the old configuration comes ba
     %main::imscpConfig = ( BEFORE => 1 );
 }
 
+{
+    package RecordingTie;
+    our @ISA = 'TestTie';
+    our @cleared;
+    sub CLEAR { push @cleared, 1; $_[0]->SUPER::CLEAR() }
+}
+{
+    %main::imscpConfig = ();
+    my $original = tie %main::imscpConfig, 'TestTie';
+    $main::imscpConfig{'TIED'} = 1;
+    my $newer;
+    {
+        my $config = stub_config();
+        $newer = tie %main::imscpConfig, 'RecordingTie';
+        $main::imscpConfig{'NEWER'} = 1;
+    }
+    is( scalar @RecordingTie::cleared, 0, 'a tie made while stubbed is left alone, not cleared, when the guard drops' );
+    is( tied %main::imscpConfig, $original, 'and the original tie is back' );
+    is_deeply( {%{$newer}}, { NEWER => 1 }, 'with the newer object untouched' );
+    undef $original;
+    undef $newer;
+    untie %main::imscpConfig;
+    %main::imscpConfig = ( BEFORE => 1 );
+}
+
 my $bind = server_config( 'bind', BIND_MODE => 'master' );
 is( $bind->{'BIND_DB_MASTER_DIR'}, '/var/cache/bind/imscp/master', 'server_config() reads the server\'s .data.dist' );
 is( $bind->{'BIND_MODE'}, 'master', 'with the overrides on top' );

@@ -35,9 +35,20 @@ if ( $pid == 0 ) {
 waitpid $pid, 0;
 ok( -d $dir, 'a forked child that exits does not remove the parent\'s sandbox' );
 
-mkdir "$dir/locked";
-chmod 0000, "$dir/locked";
-pass( 'a directory without permissions is still removed at exit (checked by eye: no imscp-test-* left in TMPDIR)' );
+{
+    my $code = q{
+        use iMSCPTest::Stub::Env qw/ sandbox /;
+        my $dir = sandbox();
+        mkdir "$dir/locked" or die $!;
+        chmod 0000, "$dir/locked";
+        print $dir, "\n";
+    };
+    open my $child, '-|', $^X, ( map { "-I$_" } @INC ), '-e', $code or die "perl: $!";
+    chomp( my $left = <$child> // '' );
+    close $child;
+    ok( length $left && $left =~ m{/imscp-test-}, 'a child test made a sandbox' );
+    ok( !-e $left, 'a directory without permissions is still removed when it exits' );
+}
 
 error( 'something broke' );
 like( ( debug_messages() )[0], qr/something broke/, 'debug_messages() returns logged errors' );

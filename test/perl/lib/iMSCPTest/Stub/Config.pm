@@ -34,18 +34,15 @@ sub config_path
     croak( "$relative is shipped neither for $suite nor in configs/debian/default" );
 }
 
-# The parse iMSCP::Config does.
+# A file as iMSCP::Config reads it, without a lock, root or an installed i-MSCP.
 sub _read
 {
     my ( $path ) = @_;
 
-    open my $fh, '<', $path or croak( "$path: $!" );
-    my %config;
-    while ( my $line = <$fh> ) {
-        chomp $line;
-        next unless $line =~ /^([^#\s=]+)\s*=\s*(.*)$/;
-        $config{$1} = $2;
-    }
+    require iMSCP::Config;
+    tie my %tied, 'iMSCP::Config', fileName => $path, readonly => 1, nocreate => 1;
+    my %config = %tied;
+    untie %tied;
     \%config;
 }
 
@@ -64,8 +61,14 @@ sub stub_config
     iMSCPTest::Guard->new( sub {
         # A tied hash goes back to the object it was tied to, which kept its
         # own contents; a plain one gets its values back.
-        %main::imscpConfig = $tie ? () : %old;
-        tie %main::imscpConfig, 'iMSCPTest::Stub::Config::Retie', $tie if $tie;
+        # Code under test may have tied the hash to something newer: let that
+        # go without a CLEAR, which would write to its file.
+        { no warnings 'untie'; untie %main::imscpConfig }
+        if ( $tie ) {
+            tie %main::imscpConfig, 'iMSCPTest::Stub::Config::Retie', $tie;
+        } else {
+            %main::imscpConfig = %old;
+        }
     } );
 }
 

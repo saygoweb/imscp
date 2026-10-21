@@ -51,6 +51,17 @@ SKIP: {
 }
 
 SKIP: {
+    skip 'Devel::Cover is not installed', 3 unless system( 'perl -MDevel::Cover -e1 2>/dev/null' ) == 0;
+    # A bind mount cannot be removed: the directory stays, emptied.
+    mkdir "$dir/mount" or die "mkdir: $!";
+    spit( "$dir/mount/stale", "old\n" );
+    $out = `COVER_DIR='$dir/mount' sh '$run' unit --cover '$dir/pass.t' 2>&1`;
+    is( $? >> 8, 0, 'unit --cover runs with a COVER_DIR that already holds files' ) or diag( $out );
+    ok( !-e "$dir/mount/stale", 'and empties it' );
+    ok( -d "$dir/mount", 'but keeps the directory itself' );
+}
+
+SKIP: {
     skip 'this host is a CI image', 2 if -e '/etc/imscp/ci-image';
     $out = `sh '$run' integration 2>&1`;
     is( $? >> 8, 2, 'integration refuses to run off the CI image' );

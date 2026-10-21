@@ -7,8 +7,8 @@
 use strict;
 use warnings;
 use Test::More;
-use iMSCPTest::Stub qw/ stub_db stub_method /;
-use iMSCPTest::Engine qw/ is_ok is_gone /;
+use iMSCPTest::Stub qw/ stub_db stub_method sandbox /;
+use iMSCPTest::Engine qw/ run_engine is_ok is_gone /;
 
 my $customer = {
     name => 'c-1.test',
@@ -62,5 +62,30 @@ is_deeply( outcome( \&is_gone, $customer ), [ 1, '' ], 'is_gone passes when ever
 $result = outcome( \&is_gone, $customer );
 is( $result->[0], 0, 'is_gone fails while a row remains' );
 like( $result->[1], qr/domain 2/, 'and names it' );
+
+# run_engine(): the exit status of imscp-rqst-mngr, a signal included.
+my $engineDir = sandbox( 'engine' );
+sub fake_engine
+{
+    my ( $code ) = @_;
+    open my $fh, '>', "$engineDir/imscp-rqst-mngr" or die "imscp-rqst-mngr: $!";
+    print {$fh} "$code\n";
+    close $fh;
+}
+local $ENV{'IMSCP_ENGINE_DIR'} = $engineDir;
+
+fake_engine( 'print "all done\n"; exit 0;' );
+is_deeply( outcome( \&run_engine ), [ 1, '' ], 'run_engine passes when the request manager exits 0' );
+
+fake_engine( 'print "it broke\n"; exit 3;' );
+$result = outcome( \&run_engine );
+is( $result->[0], 0, 'run_engine fails when it exits non-zero' );
+like( $result->[1], qr/it broke/, 'and shows its output' );
+
+fake_engine( '$| = 1; print "dying\n"; kill 9, $$; sleep 5;' );
+$result = outcome( \&run_engine );
+is( $result->[0], 0, 'run_engine fails when the request manager is killed by a signal' );
+like( $result->[1], qr/killed by signal 9 \(KILL\)/, 'naming the signal' );
+like( $result->[1], qr/dying/, 'and shows its output' );
 
 done_testing();

@@ -11,6 +11,7 @@ package iMSCPTest::Engine;
 
 use strict;
 use warnings;
+use Config ();
 use Test::More ();
 use parent 'Exporter';
 
@@ -39,10 +40,16 @@ sub dbh
 sub run_engine
 {
     my $engine = engine_dir();
-    my $out = `perl '$engine/imscp-rqst-mngr' --verbose 2>&1`;
-    my $exit = $? >> 8;
-    Test::More::ok( $exit == 0, 'imscp-rqst-mngr exits 0' ) or Test::More::diag( $out );
-    $exit == 0;
+    # exec: no shell in between to turn a signal into an exit status of 128+n.
+    my $out = `exec perl '$engine/imscp-rqst-mngr' --verbose 2>&1`;
+    my $status = $?;
+    my $signal = $status & 127;
+    my $ok = $status == 0;
+    Test::More::ok( $ok, 'imscp-rqst-mngr exits 0' ) or Test::More::diag(
+        ( $signal ? 'imscp-rqst-mngr was killed by signal ' . $signal . ' (' . ( ( split ' ', $Config::Config{'sig_name'} )[$signal] // '?' ) . ")\n" : '' )
+            . $out
+    );
+    $ok;
 }
 
 # i-MSCP leaves the error text in the status column of whatever it could not

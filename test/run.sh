@@ -22,7 +22,8 @@ set -u
 # Paths from the caller mean the caller's directory, not the checkout's: note
 # where we were started and where this script is before moving to the root.
 CALLER=$PWD
-SELF=$(cd "$(dirname "$0")" && pwd)/$(basename "$0") || exit 2
+SELF_DIR=$(cd "$(dirname "$0")" && pwd) || exit 2
+SELF=$SELF_DIR/$(basename "$0")
 cd "$(dirname "$SELF")/.." || exit 2
 
 case "${COVER_DIR:-}" in
@@ -45,21 +46,20 @@ unit() {
     fi
     [ $# -gt 0 ] || set -- test/perl/unit
 
-    if [ "$cover" = no ]; then
-        # shellcheck disable=SC2086
-        prove -r -j4 --timer -Iengine/PerlLib -Iengine/PerlVendor -Itest/perl/lib ${PROVE_ARGS:-} "$@"
-        return
+    if [ "$cover" = yes ]; then
+        COVER_DIR="${COVER_DIR:-$PWD/cover_db}"
+        # COVER_DIR can be a mount point, which cannot be removed: empty it.
+        mkdir -p "$COVER_DIR" || return 2
+        find "$COVER_DIR" -mindepth 1 -delete || return 2
+        # Only the engine's own code: not the tests, the vendored CPAN modules
+        # or anything loaded by absolute path from the system.
+        HARNESS_PERL_SWITCHES="-MDevel::Cover=-db,$COVER_DIR,-silent,1,+ignore,^test/,+ignore,^engine/PerlVendor/,+ignore,^/"
+        export HARNESS_PERL_SWITCHES
     fi
-
-    COVER_DIR="${COVER_DIR:-$PWD/cover_db}"
-    rm -rf "$COVER_DIR"
-    # Only the engine's own code: not the tests, the vendored CPAN modules or
-    # anything loaded by absolute path from the system.
-    HARNESS_PERL_SWITCHES="-MDevel::Cover=-db,$COVER_DIR,-silent,1,+ignore,^test/,+ignore,^engine/PerlVendor/,+ignore,^/"
-    export HARNESS_PERL_SWITCHES
     # shellcheck disable=SC2086
     prove -r -j4 --timer -Iengine/PerlLib -Iengine/PerlVendor -Itest/perl/lib ${PROVE_ARGS:-} "$@"
     rc=$?
+    [ "$cover" = yes ] || return $rc
     cover -silent -report html -outputdir "$COVER_DIR/html" "$COVER_DIR" >/dev/null || rc=1
     echo "coverage report: $COVER_DIR/html/coverage.html"
     return $rc

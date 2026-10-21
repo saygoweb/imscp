@@ -127,7 +127,7 @@ the tests hold for whichever implementation is installed.
 
 | System | Green path |
 |---|---|
-| named | `dig @127.0.0.1` answers the domain's and the subdomain's A records; after delete, NXDOMAIN and no zone file |
+| named | `dig @127.0.0.1` answers the domain's and the subdomain's A records; after delete, no zone file, and the server still answers but no longer serves the names (so a stopped named fails the test rather than passing it) |
 | httpd | an HTTP request with `Host:` to 127.0.0.1 serves the default index; PHP executes |
 | mta, po | SMTP to the new mailbox is accepted and the message is read back over IMAP; a forward forwards |
 | ftpd | FTP login as the new user; an upload lands in the web directory |
@@ -182,7 +182,7 @@ docker/ci/engine-test.sh [--image <ref>] [--link] [--keep] [-- test/run.sh args]
 |---|---|---|---|
 | `test.yml` (new) | unit | every PR, forks included; every push to main | the PR's checkout mounted into `:trixie`, not booted; HTML coverage report uploaded as an artifact |
 | `ci-image.yml` `build` | integration, a step after the smoke test and before push | whenever the image is rebuilt: same-repo PRs touching `engine/`, `configs/`, `gui/`…, main, weekly | the image just built. A build that fails is not pushed, so `:trixie` is never a broken engine. |
-| `test.yml` | integration | PRs that change only `test/**` | `:trixie` with `--link` |
+| `test.yml` | integration | same-repo PRs that change the integration tests, their kit or runner, and that `ci-image.yml` does not already cover | `:trixie` with `--link` |
 
 Fork PRs get unit tests only, as `ci-image.yml` already builds nothing for
 them. A failing weekly rebuild holds `:trixie` at its previous version until
