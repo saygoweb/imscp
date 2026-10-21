@@ -16,7 +16,7 @@
 #
 # Drive it with docker/imscp; see docker/README.md.
 
-ARG DEBIAN_SUITE=bookworm
+ARG DEBIAN_SUITE=trixie
 FROM debian:${DEBIAN_SUITE}
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -26,6 +26,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # systemd, plus what the i-MSCP installer shells out to. Recommends are off for
 # this one layer only: the installer runs apt itself later, and the packages it
 # pulls do want their recommends.
+# Devel::Cover is for test/run.sh unit --cover.
 RUN apt-get update \
     && apt-get -y --no-install-recommends dist-upgrade \
     && apt-get -y --no-install-recommends install \
@@ -39,6 +40,7 @@ RUN apt-get update \
         wget \
         curl \
         perl \
+        libdevel-cover-perl \
         procps \
         psmisc \
         iproute2 \

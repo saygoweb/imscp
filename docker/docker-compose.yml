@@ -23,8 +23,8 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        DEBIAN_SUITE: ${DEBIAN_SUITE:-bookworm}
-    image: imscp-dev:${DEBIAN_SUITE:-bookworm}
+        DEBIAN_SUITE: ${DEBIAN_SUITE:-trixie}
+    image: imscp-dev:${DEBIAN_SUITE:-trixie}
     container_name: ${COMPOSE_PROJECT_NAME:-imscp-dev}
 
     # i-MSCP requires a fully qualified host name, and refuses to install

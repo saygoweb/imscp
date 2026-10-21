@@ -32,7 +32,7 @@ on:
       image:
         description: The CI image to boot
         type: string
-        default: ghcr.io/saygoweb/imscp-ci:bookworm
+        default: ghcr.io/saygoweb/imscp-ci:trixie
       imscp-ref:
         description: The saygoweb/imscp ref whose docker/ci scripts drive the run
         type: string

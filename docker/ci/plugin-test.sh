@@ -12,7 +12,7 @@
 #
 # Options:
 #   --image <ref>    the CI image (default: $IMSCP_CI_IMAGE, else
-#                    ghcr.io/saygoweb/imscp-ci:bookworm)
+#                    ghcr.io/saygoweb/imscp-ci:trixie)
 #   --setup <cmd>    run before the plugin is installed, from its directory
 #                    (e.g. installing Composer dependencies)
 #   --no-install     only link the plugin in; do not install and enable it
@@ -26,7 +26,7 @@
 
 set -euo pipefail
 
-IMAGE="${IMSCP_CI_IMAGE:-ghcr.io/saygoweb/imscp-ci:bookworm}"
+IMAGE="${IMSCP_CI_IMAGE:-ghcr.io/saygoweb/imscp-ci:trixie}"
 SETUP=''
 INSTALL=yes
 KEEP=no
