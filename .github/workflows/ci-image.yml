@@ -66,6 +66,7 @@ concurrency:
 
 env:
   IMAGE: ghcr.io/saygoweb/imscp-ci
+  DEBIAN_SUITE: trixie
 
 jobs:
   build:
@@ -94,12 +95,10 @@ jobs:
           if [ "${{ github.event_name }}" = pull_request ]; then
               echo "tags=$IMAGE:pr-${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
           else
-              echo "tags=$IMAGE:trixie $IMAGE:trixie-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+              echo "tags=$IMAGE:$DEBIAN_SUITE $IMAGE:$DEBIAN_SUITE-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build and install
-        env:
-          DEBIAN_SUITE: trixie
         run: docker/ci/build-image.sh ${{ steps.tags.outputs.tags }}
 
       - name: Smoke test

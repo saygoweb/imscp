@@ -83,7 +83,7 @@ if [ -n "$PR" ]; then
 else
     doomed="$(versions | jq --argjson keep "$KEEP" --argjson open "$(open_prs)" '
         def pr_tag:  test("^pr-[0-9]+$");
-        def sha_tag: test("^[a-z][a-z0-9]*-[0-9a-f]{7,40}$") and (pr_tag | not);
+        def sha_tag: test("^[a-z][a-z0-9]*-[0-9a-f]{7}$") and (pr_tag | not);
         def suite:   sub("-[0-9a-f]+$"; "");
         # A tag it does not recognise (trixie above all) protects a version.
         def protected: any(.tags[]; (sha_tag or pr_tag) | not);

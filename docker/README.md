@@ -136,7 +136,8 @@ linked plugins appear, ready to install, exactly as on a real server.
 ## Plugin CI
 
 The same server backs the plugins' GitHub Actions, as an image with i-MSCP
-already installed: `ghcr.io/saygoweb/imscp-ci:trixie`.
+already installed: `ghcr.io/saygoweb/imscp-ci:trixie`. Plugins default to
+`:bookworm` until main has published `:trixie`.
 
 - `docker/ci/build-image.sh <tag>` boots the development image, installs i-MSCP
   into it with `IMSCP_LINK=no` — so the installation is self-contained rather

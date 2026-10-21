@@ -32,7 +32,8 @@ on:
       image:
         description: The CI image to boot
         type: string
-        default: ghcr.io/saygoweb/imscp-ci:trixie
+        # The default moves to :trixie once main has published it (a follow-up change).
+        default: ghcr.io/saygoweb/imscp-ci:bookworm
       imscp-ref:
         description: The saygoweb/imscp ref whose docker/ci scripts drive the run
         type: string
