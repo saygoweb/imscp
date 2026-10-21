@@ -5,10 +5,13 @@ name: CI image
 # installed i-MSCP in seconds instead of installing one for half an hour. See
 # docker/ci/build-image.sh.
 #
-#   main                 -> :bookworm and :bookworm-<sha>
+#   main                 -> :trixie and :trixie-<sha>
 #   a same-repo PR       -> :pr-<number>, for trying plugin CI against the change
-#   weekly               -> :bookworm again, so the image does not fall behind
+#   weekly               -> :trixie again, so the image does not fall behind
 #                           the Debian and sury archives
+#
+# Trixie is what production runs. The bookworm image is no longer built: its
+# last :bookworm stays published, frozen, for anything still pinned to it.
 #
 # Old images are pruned by docker/ci/prune-images.sh: after every build, and
 # for a pull request's :pr-<number> as soon as the pull request closes. See
@@ -63,6 +66,7 @@ concurrency:
 
 env:
   IMAGE: ghcr.io/saygoweb/imscp-ci
+  DEBIAN_SUITE: trixie
 
 jobs:
   build:
@@ -91,7 +95,7 @@ jobs:
           if [ "${{ github.event_name }}" = pull_request ]; then
               echo "tags=$IMAGE:pr-${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
           else
-              echo "tags=$IMAGE:bookworm $IMAGE:bookworm-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+              echo "tags=$IMAGE:$DEBIAN_SUITE $IMAGE:$DEBIAN_SUITE-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build and install

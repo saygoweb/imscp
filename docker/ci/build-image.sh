@@ -30,7 +30,7 @@ CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOCKER_DIR="$(cd "$CI_DIR/.." && pwd)"
 PROJECT_ROOT="$(cd "$DOCKER_DIR/.." && pwd)"
 
-DEBIAN_SUITE="${DEBIAN_SUITE:-bookworm}"
+DEBIAN_SUITE="${DEBIAN_SUITE:-trixie}"
 BASE_IMAGE="imscp-ci-base:$DEBIAN_SUITE"
 CONTAINER="imscp-ci-build-$$"
 
@@ -82,6 +82,13 @@ then
     die "the installation still links into /var/www/imscp-git"
 fi
 
+REVISION="$(git -C "$PROJECT_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
+
+# Marks the image as a throwaway CI server. test/run.sh runs the integration
+# tests, which add and delete real customers, only where this file exists; the
+# development stack never has it.
+docker exec "$CONTAINER" sh -c "printf 'i-MSCP CI image, built from %s\n' '$REVISION' > /etc/imscp/ci-image"
+
 log "tidying"
 docker exec "$CONTAINER" sh -c 'apt-get clean && rm -rf /tmp/* /var/tmp/*'
 
@@ -92,7 +99,7 @@ log "committing $1"
 docker commit \
     --change 'LABEL org.opencontainers.image.source="https://github.com/saygoweb/imscp"' \
     --change "LABEL org.opencontainers.image.description=\"i-MSCP installed on Debian $DEBIAN_SUITE, for plugin CI\"" \
-    --change "LABEL org.opencontainers.image.revision=\"$(git -C "$PROJECT_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)\"" \
+    --change "LABEL org.opencontainers.image.revision=\"$REVISION\"" \
     "$CONTAINER" "$1" >/dev/null
 
 for tag in "${@:2}"; do

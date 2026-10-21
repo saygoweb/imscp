@@ -7,14 +7,15 @@
 #
 # Prune keeps:
 #
-#   * every version with a tag it does not recognise — `bookworm`, which every
-#     plugin's Test job pulls, above all;
-#   * the newest <n> (default 3) `bookworm-<sha>` versions, so a plugin can pin
-#     a known-good image when a new build breaks;
+#   * every version with a tag it does not recognise: a bare suite tag such as
+#     `trixie`, which every plugin's Test job pulls, above all. The retired
+#     `bookworm` is kept that way too: frozen, never deleted;
+#   * the newest <n> (default 3) `<suite>-<sha>` versions of each suite, so a
+#     plugin can pin a known-good image when a new build breaks;
 #   * `pr-<number>` versions whose pull request is still open;
 #
-# and deletes the rest: older `bookworm-<sha>`, `pr-<number>` of closed pull
-# requests, and untagged versions — left behind whenever `bookworm` or a
+# and deletes the rest: older `<suite>-<sha>`, `pr-<number>` of closed pull
+# requests, and untagged versions — left behind whenever a suite tag or a
 # `pr-<number>` moves on, and unreachable by name. Nothing else references
 # them: the images are single-platform and pushed with plain `docker push`, so
 # there are no multi-arch or attestation manifests pointing at untagged
@@ -76,26 +77,30 @@ open_prs() {
 # {id, tags, why} to delete.
 if [ -n "$PR" ]; then
     doomed="$(versions | jq --arg tag "pr-$PR" '
-        # Only a version whose tags are all PR tags: never take `bookworm` with it.
+        # Only a version whose tags are all PR tags: never take a suite tag with it.
         [ .[] | select((.tags | index($tag)) and all(.tags[]; test("^pr-[0-9]+$")))
               | {id, tags, why: "its pull request has closed"} ]')"
 else
     doomed="$(versions | jq --argjson keep "$KEEP" --argjson open "$(open_prs)" '
-        def sha_tag: test("^bookworm-[0-9a-f]+$");
         def pr_tag:  test("^pr-[0-9]+$");
-        # A tag it does not recognise (bookworm above all) protects a version.
+        def sha_tag: test("^[a-z][a-z0-9]*-[0-9a-f]{7}$") and (pr_tag | not);
+        def suite:   sub("-[0-9a-f]+$"; "");
+        # A tag it does not recognise (trixie above all) protects a version.
         def protected: any(.tags[]; (sha_tag or pr_tag) | not);
 
         (map(select((.tags | length) > 0 and (protected | not)
                     and any(.tags[]; sha_tag)))
-         | sort_by(.created_at) | reverse | .[$keep:] | map(.id)) as $old_shas
+         | group_by([.tags[] | select(sha_tag) | suite][0])
+         | map(sort_by(.created_at) | reverse | .[$keep:])
+         | add // []
+         | map(.id)) as $old_shas
         | [ .[]
             | if (.tags | length) == 0 then
                   {id, tags, why: "untagged"}
               elif protected then
                   empty
               elif (.id | IN($old_shas[])) then
-                  {id, tags, why: "older than the newest \($keep) bookworm-<sha>"}
+                  {id, tags, why: "older than the newest \($keep) <sha> versions of its suite"}
               elif all(.tags[]; pr_tag)
                    and all(.tags[]; (ltrimstr("pr-") | tonumber) | IN($open[]) | not) then
                   {id, tags, why: "its pull request has closed"}

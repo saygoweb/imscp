@@ -4,7 +4,7 @@
 #
 # Runs from the repository root without an installed server:
 #
-#   prove -Iengine/PerlLib -Iengine/PerlVendor engine/t
+#   prove -Iengine/PerlLib -Iengine/PerlVendor test/perl
 #
 # The zone is built from the shipped db.tpl and db_sub.tpl. Events and zone
 # compilation are stubbed; everything else is the real code path.

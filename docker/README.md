@@ -136,7 +136,8 @@ linked plugins appear, ready to install, exactly as on a real server.
 ## Plugin CI
 
 The same server backs the plugins' GitHub Actions, as an image with i-MSCP
-already installed: `ghcr.io/saygoweb/imscp-ci:bookworm`.
+already installed: `ghcr.io/saygoweb/imscp-ci:trixie`. Plugins default to
+`:bookworm` until main has published `:trixie`.
 
 - `docker/ci/build-image.sh <tag>` boots the development image, installs i-MSCP
   into it with `IMSCP_LINK=no` — so the installation is self-contained rather
@@ -146,8 +147,9 @@ already installed: `ghcr.io/saygoweb/imscp-ci:bookworm`.
   requests (as `:pr-<number>`), then pushes the result.
 - `docker/ci/prune-images.sh` keeps the registry from growing without end:
   after every build it deletes untagged versions, `pr-<n>` images of closed
-  pull requests and all but the newest three `bookworm-<sha>`; `bookworm` is
-  never touched. A closing pull request's `pr-<n>` goes at once. Try it with
+  pull requests and all but the newest three `<suite>-<sha>` per suite; the
+  moving `<suite>` tags are never touched. `:bookworm`, from before the move to
+  trixie, is never pruned and never rebuilt. A closing pull request's `pr-<n>` goes at once. Try it with
   `--dry-run`, or run `CI image` by hand with the dry-run box ticked.
 - `docker/ci/plugin-test.sh` boots that image with a directory of plugin
   checkouts mounted at `/var/www/imscp-plugins`, attaches one plugin with
@@ -202,7 +204,7 @@ reload: `docker/imscp install`.
 
 `docker/imscp init` writes `docker/.env` with host ports that are free on your
 machine. Everything else that can go in that file is listed, commented, in
-`.env.example`: the Debian release (`DEBIAN_SUITE`, `bookworm` or `trixie`), the
+`.env.example`: the Debian release (`DEBIAN_SUITE`, `trixie` (the default) or `bookworm`), the
 server's host name, the panel credentials, the plugin list, and the install-time
 choices passed through to `preseed.pl`.
 

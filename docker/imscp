@@ -41,7 +41,7 @@ export COMPOSE_PROJECT_NAME
 export USER_UID="${USER_UID:-$(id -u)}"
 export USER_GID="${USER_GID:-$(id -g)}"
 
-export DEBIAN_SUITE="${DEBIAN_SUITE:-bookworm}"
+export DEBIAN_SUITE="${DEBIAN_SUITE:-trixie}"
 
 export IMSCP_HOSTNAME_SHORT="${IMSCP_HOSTNAME_SHORT:-imscp}"
 export IMSCP_DOMAIN="${IMSCP_DOMAIN:-docker.local}"
