@@ -53,14 +53,14 @@ unit() {
         find "$COVER_DIR" -mindepth 1 -delete || return 2
         # Only the engine's own code: not the tests, the vendored CPAN modules
         # or anything loaded by absolute path from the system.
-        HARNESS_PERL_SWITCHES="-MDevel::Cover=-db,$COVER_DIR,-silent,1,+ignore,^test/,+ignore,^engine/PerlVendor/,+ignore,^/"
+        HARNESS_PERL_SWITCHES="-MDevel::Cover=-db,$COVER_DIR/db,-silent,1,+ignore,^test/,+ignore,^engine/PerlVendor/,+ignore,^/"
         export HARNESS_PERL_SWITCHES
     fi
     # shellcheck disable=SC2086
     prove -r -j4 --timer -Iengine/PerlLib -Iengine/PerlVendor -Itest/perl/lib ${PROVE_ARGS:-} "$@"
     rc=$?
     [ "$cover" = yes ] || return $rc
-    cover -silent -report html -outputdir "$COVER_DIR/html" "$COVER_DIR" >/dev/null || rc=1
+    cover -silent -report html -outputdir "$COVER_DIR/html" "$COVER_DIR/db" >/dev/null || rc=1
     echo "coverage report: $COVER_DIR/html/coverage.html"
     return $rc
 }

@@ -44,14 +44,14 @@ is( $? >> 8, 2, 'an unknown command exits 2 from a subdirectory, the script name
 like( $out, qr{test/run\.sh unit}, 'and the usage is read out of the script' );
 
 SKIP: {
-    skip 'Devel::Cover is not installed', 2 unless system( 'perl -MDevel::Cover -e1 2>/dev/null' ) == 0;
+    skip 'Devel::Cover is not installed', 2 unless eval { require Devel::Cover; 1 };
     $out = `cd '$dir/sub' && COVER_DIR=cov sh '$run' unit --cover rel.t 2>&1`;
     is( $? >> 8, 0, 'unit --cover runs with a relative COVER_DIR' ) or diag( $out );
     ok( -d "$dir/sub/cov", 'and writes it under the caller\'s directory' );
 }
 
 SKIP: {
-    skip 'Devel::Cover is not installed', 3 unless system( 'perl -MDevel::Cover -e1 2>/dev/null' ) == 0;
+    skip 'Devel::Cover is not installed', 5 unless eval { require Devel::Cover; 1 };
     # A bind mount cannot be removed: the directory stays, emptied.
     mkdir "$dir/mount" or die "mkdir: $!";
     spit( "$dir/mount/stale", "old\n" );
@@ -59,6 +59,8 @@ SKIP: {
     is( $? >> 8, 0, 'unit --cover runs with a COVER_DIR that already holds files' ) or diag( $out );
     ok( !-e "$dir/mount/stale", 'and empties it' );
     ok( -d "$dir/mount", 'but keeps the directory itself' );
+    ok( -f "$dir/mount/html/coverage.html", 'and writes the HTML report there' );
+    unlike( $out, qr/invalid database/, 'beside the database, not inside it' );
 }
 
 SKIP: {

@@ -43,7 +43,7 @@ is_deeply( \%main::imscpConfig, { BEFORE => 1 }, 'the old configuration comes ba
     is( tied %main::imscpConfig, $object, 'and tied to the same object afterwards' );
     is( $main::imscpConfig{'TIED'}, 1, 'with its contents' );
     undef $object;
-    untie %main::imscpConfig;
+    { no warnings 'untie'; untie %main::imscpConfig }
     %main::imscpConfig = ( BEFORE => 1 );
 }
 
@@ -68,7 +68,7 @@ is_deeply( \%main::imscpConfig, { BEFORE => 1 }, 'the old configuration comes ba
     is_deeply( {%{$newer}}, { NEWER => 1 }, 'with the newer object untouched' );
     undef $original;
     undef $newer;
-    untie %main::imscpConfig;
+    { no warnings 'untie'; untie %main::imscpConfig }
     %main::imscpConfig = ( BEFORE => 1 );
 }
 

@@ -25,7 +25,7 @@ my @lchowned;
     no warnings 'redefine';
     my $real = eval { require Lchown; \&Lchown::lchown };
     $INC{'Lchown.pm'} //= __FILE__;
-    *Lchown::lchown = sub {
+    *Lchown::lchown = sub (@) {
         my ( $uid, $gid, @paths ) = @_;
         push @lchowned, @paths;
         return $real->( $uid, $gid, @paths ) if $real;
