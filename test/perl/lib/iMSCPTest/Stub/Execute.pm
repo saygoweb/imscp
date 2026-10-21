@@ -55,8 +55,14 @@ sub stub_execute
         my ( $command, $stdout, $stderr ) = @_;
 
         my ( $exit, $out, $err ) = $answer->( $command );
-        ${ $stdout } = $out if ref $stdout;
-        ${ $stderr } = $err if ref $stderr;
+
+        # Output as the real execute() hands it back: both captures lose one
+        # trailing newline, but a lone STDERR capture is left as it came
+        # (the real code chomps the reference there, which changes nothing).
+        ${ $stdout } = $out if $stdout;
+        ${ $stderr } = $err if $stderr;
+        chomp( ${ $stdout } ) if $stdout;
+        chomp( ${ $stderr } ) if $stderr && $stdout;
         $? = $exit << 8;
         $exit;
     };
@@ -66,9 +72,11 @@ sub stub_execute
 
         my ( $exit, $out, $err ) = $answer->( $command );
         $onStdout //= sub { print STDOUT $_[0] };
-        $onStderr //= sub { print STDERR $_[0] };
-        $onStdout->( "$_\n" ) for split /\n/, $out;
-        $onStderr->( "$_\n" ) for split /\n/, $err;
+        $onStderr //= sub { print STDERR $_[0] . "\n" };
+
+        # Lines arrive with their newline, a last line without one as it is.
+        $onStdout->( $_ ) for $out =~ /\G([^\n]*\n|[^\n]+)/g;
+        $onStderr->( $_ ) for $err =~ /\G([^\n]*\n|[^\n]+)/g;
         $? = $exit << 8;
         $exit;
     };

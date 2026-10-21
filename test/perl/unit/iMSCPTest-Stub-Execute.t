@@ -6,7 +6,7 @@
 use strict;
 use warnings;
 use Test::More;
-use iMSCP::Execute ();
+use iMSCP::Execute qw/ execute executeNoWait /;
 use iMSCPTest::Stub::Symbol qw/ stub_method /;
 use iMSCPTest::Stub::Execute qw/ stub_execute /;
 
@@ -29,11 +29,29 @@ my $real = \&iMSCP::Execute::execute;
 
     is_deeply( Caller::string(), [ 0, 'stubbed', '' ], 'an imported execute() is answered by the rule' );
     is_deeply( Caller::list(), [ 2, '', 'No such file' ], 'an array command matches as its joined line' );
-    is_deeply( Caller::nowait(), [ 0, "one\n", "two\n", "E:oops\n" ], 'executeNoWait() feeds the output to the callbacks, line by line' );
+    is_deeply( Caller::nowait(), [ 0, "one\n", "two", "E:oops" ], 'executeNoWait() feeds the callbacks line by line, a last line without its newline as it is' );
     is_deeply( [ $exec->commands ], [ 'echo hi', 'ls -l /nowhere', 'tail log' ], 'every command is recorded' );
 
     eval q{ package Later; use iMSCP::Execute; 1 } or die $@;
     is( Later::execute( 'echo hi', \my $out ), 0, 'a module that imports execute() after stubbing gets the stub' );
+}
+
+{
+    my $exec = stub_execute(
+        qr/^version$/ => [ 0, "9.18.1\n", '' ],
+        qr/^both$/    => [ 0, "out\n", "err\n" ],
+        qr/^errs$/    => [ 0, '', "err\n" ],
+        qr/^lines$/   => [ 0, "a\n\nb\n", "c\nd" ],
+    );
+    execute( 'version', \my $version );
+    is( $version, '9.18.1', 'execute() hands stdout back without its trailing newline' );
+    execute( 'both', \my $out, \my $err );
+    is_deeply( [ $out, $err ], [ 'out', 'err' ], 'and stderr too when both are captured' );
+    execute( 'errs', undef, \my $only );
+    is( $only, "err\n", 'a lone stderr capture is left alone, as in the real execute()' );
+    my ( @o, @e );
+    executeNoWait( 'lines', sub { push @o, $_[0] }, sub { push @e, $_[0] } );
+    is_deeply( [ \@o, \@e ], [ [ "a\n", "\n", "b\n" ], [ "c\n", 'd' ] ], 'executeNoWait() splits like the real one, empty lines and a final partial line included' );
 }
 
 is( \&Caller::execute, $real, 'the real execute() is back in the importing module' );

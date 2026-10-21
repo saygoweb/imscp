@@ -37,7 +37,9 @@ test/
   perl/
     README.md                  per-module coverage status
     lib/iMSCPTest/
-      Stub.pm                  unit kit
+      Guard.pm                 scope guard behind every stub
+      Stub.pm                  unit kit: the one import, `use iMSCPTest::Stub qw/ :all /`
+      Stub/{Symbol,Execute,DB,Config,Env}.pm   the kit's parts
       Fixture.pm               integration: panel-shaped rows
       Engine.pm                integration: run the engine, assert statuses
     unit/<Module-Path>.t       e.g. unit/iMSCP-File-copyFile.t
@@ -56,8 +58,8 @@ Shaped by three facts about the engine:
 - `execute()` is imported into each module's namespace by `use iMSCP::Execute`,
   so redefining `iMSCP::Execute::execute` misses the copies. `stub_execute()`
   walks the symbol table and replaces every alias of the real sub. It records
-  each call. Responses are given as a coderef or as `qr/…/ => [ exit, stdout,
-  stderr ]` pairs. A command that matches nothing fails the test, so nothing
+  each call. Responses are `qr/…/ => [ exit, stdout, stderr ]` or `qr/…/ => sub {…}`
+  pairs, and a catch-all is `qr/^/ => sub {…}`. A command that matches nothing fails the test, so nothing
   reaches the real shell.
 - Singletons (`Common::SingletonClass`, 61 classes) hold their instance in
   `${"Class::_instance"}`. `stub_singleton( Class => $obj )` sets that variable
@@ -77,7 +79,7 @@ Also:
 | `config_path( 'bind/parts/db.tpl' )` | the shipped template or config file for the suite, with the same fallback |
 | `stub_events( fail => $event )` | an `iMSCP::EventManager` stand-in that records `trigger` and returns 0, or 1 for `$event` |
 | `sandbox()` / `sandbox_path( $real )` | a temp dir, cleaned up even after a test removed a directory's permissions; real paths mapped into it |
-| `new_server( $class, %fields )` | a blessed instance with the constructor's fields and the stubs wired in |
+| `new_server( $class, %fields )` | a blessed instance with the fields the caller passes, `config` defaulting to `{}`, and the event stub wired in |
 | `debug_messages()` | what went through `iMSCP::Debug::error`, to assert why a call returned 1 |
 
 Every stub is restored when its enclosing scope or the test file ends.
@@ -146,11 +148,15 @@ and ends by deleting it, which also exercises the delete path.
 ```
 test/run.sh unit [--cover] [files…]     anywhere, any user
 test/run.sh integration [files…]        CI image only, as root
-test/run.sh all
+test/run.sh ci                          the tests of the CI scripts (test/ci)
+test/run.sh all                         unit, then integration
 ```
 
-- It adds `-Iengine/PerlLib -Iengine/PerlVendor -Itest/perl/lib` and `--timer`,
-  and passes `PROVE_ARGS` through. Unit tests run with `-j4`; integration tests
+- Unit tests add `-Iengine/PerlLib -Iengine/PerlVendor -Itest/perl/lib`.
+  Integration tests use the installed engine's `PerlLib` and `PerlVendor`
+  (`${IMSCP_ENGINE_DIR:-/var/www/imscp/engine}`), which is the checkout only
+  under `engine-test.sh --link`. Both add `--timer` and pass `PROVE_ARGS`
+  through. Unit tests run with `-j4`; integration tests
   run serially.
 - `--cover` runs the unit tests under `Devel::Cover` (`libdevel-cover-perl`).
 - `integration` refuses to run unless `/etc/imscp/ci-image` exists.

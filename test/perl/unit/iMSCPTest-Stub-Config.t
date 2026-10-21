@@ -27,6 +27,26 @@ ok( !eval { config_path( 'no/such/file' ); 1 }, 'and dies for a file that is shi
 }
 is_deeply( \%main::imscpConfig, { BEFORE => 1 }, 'the old configuration comes back' );
 
+{
+    package TestTie;
+    require Tie::Hash;
+    our @ISA = 'Tie::StdHash';
+}
+{
+    %main::imscpConfig = ();
+    my $object = tie %main::imscpConfig, 'TestTie';
+    $main::imscpConfig{'TIED'} = 1;
+    {
+        my $config = stub_config( DEBUG => 1 );
+        ok( !tied %main::imscpConfig, 'a tied configuration is untied while stubbed' );
+    }
+    is( tied %main::imscpConfig, $object, 'and tied to the same object afterwards' );
+    is( $main::imscpConfig{'TIED'}, 1, 'with its contents' );
+    undef $object;
+    untie %main::imscpConfig;
+    %main::imscpConfig = ( BEFORE => 1 );
+}
+
 my $bind = server_config( 'bind', BIND_MODE => 'master' );
 is( $bind->{'BIND_DB_MASTER_DIR'}, '/var/cache/bind/imscp/master', 'server_config() reads the server\'s .data.dist' );
 is( $bind->{'BIND_MODE'}, 'master', 'with the overrides on top' );

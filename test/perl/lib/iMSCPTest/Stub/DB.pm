@@ -60,10 +60,22 @@ sub getRawDb { $_[0]->{'dbh'} }
 
 sub doQuery
 {
-    my ( $self, $key, $sql, @bind ) = @_;
+    my ( $self, $key, $query, @bindValues ) = @_;
 
-    my $rows = $self->{'dbh'}->_rows( $sql, @bind );
-    +{ map { my $row = iMSCPTest::Stub::DB::Dbh::_hash( $_, $sql ); ( $row->{$key} => $row ) } @{ $rows } };
+    # The contract of iMSCP::Database::MySQL::doQuery: a hashref on success
+    # ({} when the statement gives no rows), the error string on failure.
+    local $@;
+    my $qrs = eval {
+        defined $query or die 'No query provided';
+        my $dbh = $self->getRawDb();
+        local $dbh->{'RaiseError'} = 0;
+        my $sth = $dbh->prepare( $query ) or die $DBI::errstr;
+        $sth->execute( @bindValues ) or die $DBI::errstr;
+        $sth->fetchall_hashref( $key ) || {};
+    };
+
+    return "$@" if $@;
+    $qrs;
 }
 
 sub useDatabase
@@ -111,7 +123,6 @@ sub _answer
 {
     my ( $self, $sql, @bind ) = @_;
 
-    $sql = _normalise( $sql );
     push @{ $self->{'_statements'} }, [ $sql, @bind ];
 
     my @rules = @{ $self->{'_rules'} };
@@ -156,6 +167,7 @@ sub _array
 sub do
 {
     my ( $self, $sql, undef, @bind ) = @_;
+    $sql = _normalise( $sql );
 
     my $result = $self->_answer( $sql, @bind );
     my $count = ref $result eq 'ARRAY' ? scalar @{ $result } : $result;
@@ -165,17 +177,19 @@ sub do
 sub selectrow_hashref
 {
     my ( $self, $sql, undef, @bind ) = @_;
+    $sql = _normalise( $sql );
 
     my $rows = $self->_rows( $sql, @bind );
-    @{ $rows } ? _hash( $rows->[0], _normalise( $sql ) ) : undef;
+    @{ $rows } ? _hash( $rows->[0], $sql ) : undef;
 }
 
 sub selectrow_arrayref
 {
     my ( $self, $sql, undef, @bind ) = @_;
+    $sql = _normalise( $sql );
 
     my $rows = $self->_rows( $sql, @bind );
-    @{ $rows } ? _array( $rows->[0], _normalise( $sql ) ) : undef;
+    @{ $rows } ? _array( $rows->[0], $sql ) : undef;
 }
 
 sub selectrow_array
@@ -189,29 +203,33 @@ sub selectrow_array
 sub selectcol_arrayref
 {
     my ( $self, $sql, undef, @bind ) = @_;
+    $sql = _normalise( $sql );
 
-    [ map { _array( $_, _normalise( $sql ) )->[0] } @{ $self->_rows( $sql, @bind ) } ];
+    [ map { _array( $_, $sql )->[0] } @{ $self->_rows( $sql, @bind ) } ];
 }
 
 sub selectall_arrayref
 {
     my ( $self, $sql, $attr, @bind ) = @_;
+    $sql = _normalise( $sql );
 
     my $rows = $self->_rows( $sql, @bind );
     my $hashes = ref $attr eq 'HASH' && ref $attr->{'Slice'} eq 'HASH';
-    [ map { $hashes ? _hash( $_, _normalise( $sql ) ) : _array( $_, _normalise( $sql ) ) } @{ $rows } ];
+    [ map { $hashes ? _hash( $_, $sql ) : _array( $_, $sql ) } @{ $rows } ];
 }
 
 sub selectall_hashref
 {
     my ( $self, $sql, $key, undef, @bind ) = @_;
+    $sql = _normalise( $sql );
 
-    +{ map { my $row = _hash( $_, _normalise( $sql ) ); ( $row->{$key} => $row ) } @{ $self->_rows( $sql, @bind ) } };
+    +{ map { my $row = _hash( $_, $sql ); ( $row->{$key} => $row ) } @{ $self->_rows( $sql, @bind ) } };
 }
 
 sub prepare
 {
     my ( $self, $sql ) = @_;
+    $sql = _normalise( $sql );
     iMSCPTest::Stub::DB::Sth->new( $self, $sql );
 }
 
@@ -256,7 +274,7 @@ sub execute
     $self->{'count'} || '0E0';
 }
 
-sub _sql { iMSCPTest::Stub::DB::Dbh::_normalise( $_[0]->{'sql'} ) }
+sub _sql { $_[0]->{'sql'} }
 
 sub fetchrow_hashref
 {

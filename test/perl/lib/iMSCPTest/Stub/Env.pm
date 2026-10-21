@@ -35,11 +35,13 @@ sub stub_events
     iMSCPTest::Stub::Env::EventsGuard->new( sub { undef $singleton }, events => $events );
 }
 
-my $SANDBOX;
+my ( $SANDBOX, $OWNER );
 
 sub sandbox
 {
-    $SANDBOX //= tempdir( 'imscp-test-XXXXXX', TMPDIR => 1 );
+    return $SANDBOX if defined $SANDBOX;
+    $OWNER = $$;
+    $SANDBOX = tempdir( 'imscp-test-XXXXXX', TMPDIR => 1 );
 }
 
 sub sandbox_path
@@ -60,9 +62,10 @@ sub debug_messages
 }
 
 # A failing test can leave a directory without its execute bit; give every
-# directory its permissions back so that it can be removed.
+# directory its permissions back so that it can be removed. Only the process
+# that made the sandbox removes it: a forked child runs this too.
 END {
-    if ( defined $SANDBOX && -d $SANDBOX ) {
+    if ( defined $SANDBOX && $$ == $OWNER && -d $SANDBOX ) {
         local $?;
         system( 'chmod', '-R', 'u+rwx', '--', $SANDBOX );
         system( 'rm', '-rf', '--', $SANDBOX );

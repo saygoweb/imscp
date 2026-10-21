@@ -27,6 +27,14 @@ my $path = sandbox_path( '/etc/bind/named.conf' );
 is( $path, "$dir/etc/bind/named.conf", 'sandbox_path() maps a real path into it' );
 ok( -d "$dir/etc/bind", 'and creates its directory' );
 
+my $pid = fork() // die "fork: $!";
+if ( $pid == 0 ) {
+    sandbox_path( '/from/child' );
+    exit 0;    # a normal exit runs END
+}
+waitpid $pid, 0;
+ok( -d $dir, 'a forked child that exits does not remove the parent\'s sandbox' );
+
 mkdir "$dir/locked";
 chmod 0000, "$dir/locked";
 pass( 'a directory without permissions is still removed at exit (checked by eye: no imscp-test-* left in TMPDIR)' );

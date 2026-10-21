@@ -19,12 +19,21 @@
 
 set -u
 
-cd "$(dirname "$0")/.." || exit 2
+# Paths from the caller mean the caller's directory, not the checkout's: note
+# where we were started and where this script is before moving to the root.
+CALLER=$PWD
+SELF=$(cd "$(dirname "$0")" && pwd)/$(basename "$0") || exit 2
+cd "$(dirname "$SELF")/.." || exit 2
+
+case "${COVER_DIR:-}" in
+    ''|/*) ;;
+    *) COVER_DIR=$CALLER/$COVER_DIR ;;
+esac
 
 MARKER=/etc/imscp/ci-image
 
 usage() {
-    { echo 'usage:'; sed -n '3,6p' "$0" | sed 's/^# /  /'; } >&2
+    { echo 'usage:'; sed -n '4,7p' "$SELF" | sed 's/^# /  /'; } >&2
     exit 2
 }
 
@@ -58,11 +67,11 @@ unit() {
 
 integration() {
     if [ ! -f "$MARKER" ]; then
-        echo "$0: $MARKER is missing. The integration tests add and delete real" >&2
+        echo "$SELF: $MARKER is missing. The integration tests add and delete real" >&2
         echo "customers, so they run only on a throwaway CI image: docker/ci/engine-test.sh" >&2
         return 2
     fi
-    [ "$(id -u)" -eq 0 ] || { echo "$0: the integration tests must run as root" >&2; return 2; }
+    [ "$(id -u)" -eq 0 ] || { echo "$SELF: the integration tests must run as root" >&2; return 2; }
 
     engine="${IMSCP_ENGINE_DIR:-/var/www/imscp/engine}"
     [ $# -gt 0 ] || set -- test/perl/integration
@@ -83,20 +92,35 @@ normalise() {
     return 1
 }
 
-case "${1:-}" in
+cmd=${1:-}
+[ $# -eq 0 ] || shift
+
+# Files and directories named on the command line are relative to the caller.
+n=$#
+while [ "$n" -gt 0 ]; do
+    arg=$1
+    shift
+    case "$arg" in
+        -*|/*) ;;
+        *) arg=$CALLER/$arg ;;
+    esac
+    set -- "$@" "$arg"
+    n=$((n - 1))
+done
+
+case "$cmd" in
     unit|integration|ci)
-        cmd=$1
-        shift
         "$cmd" "$@"
         normalise $?
         exit $?
         ;;
     all)
-        shift
-        unit; u=$?
-        integration; i=$?
-        [ "$u" -eq 0 ] && [ "$i" -eq 0 ] && exit 0
-        exit 1
+        # The options and files go to the unit run. A failure there ends it;
+        # otherwise the exit status is the integration run's own.
+        unit "$@" || exit 1
+        integration
+        normalise $?
+        exit $?
         ;;
     *)
         usage

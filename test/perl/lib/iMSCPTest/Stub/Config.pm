@@ -56,11 +56,17 @@ sub stub_config
     iMSCPTest::Guard::require_kept( wantarray, 'stub_config' );
 
     no warnings 'once';
+    my $tie = tied %main::imscpConfig;
     my %old = %main::imscpConfig;
-    untie %main::imscpConfig if tied %main::imscpConfig;
+    { no warnings 'untie'; untie %main::imscpConfig if $tie }    # we hold the object
     %main::imscpConfig = ( %{ _read( config_path( 'imscp.conf' ) ) }, %over );
 
-    iMSCPTest::Guard->new( sub { %main::imscpConfig = %old } );
+    iMSCPTest::Guard->new( sub {
+        # A tied hash goes back to the object it was tied to, which kept its
+        # own contents; a plain one gets its values back.
+        %main::imscpConfig = $tie ? () : %old;
+        tie %main::imscpConfig, 'iMSCPTest::Stub::Config::Retie', $tie if $tie;
+    } );
 }
 
 sub server_config
@@ -69,5 +75,10 @@ sub server_config
 
     +{ %{ _read( config_path( "$server/$server.data.dist" ) ) }, %over };
 }
+
+package iMSCPTest::Stub::Config::Retie;
+
+# tie() with an object it is given instead of a new one.
+sub TIEHASH { $_[1] }
 
 1;

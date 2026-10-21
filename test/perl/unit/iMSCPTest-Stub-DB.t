@@ -70,6 +70,20 @@ my $realFactory = \&iMSCP::Database::factory;
     like( $failed[0], qr/hash/, 'and says why' );
 }
 
+{
+    my $db = stub_db(
+        qr/^UPDATE domain SET/ => 1,
+        qr/^SELECT boom/       => sub { die "kaboom\n" },
+        qr/^SELECT id FROM t$/ => [ { id => 5 } ],
+    );
+    my $adapter = iMSCP::Database->factory();
+
+    is_deeply( $adapter->doQuery( 'u', 'UPDATE domain SET x = 1' ), {}, 'doQuery() of a statement without rows is an empty hash' );
+    is( $adapter->doQuery( 'u', 'SELECT boom' ), "kaboom\n", 'a failing statement gives the error string, not a die' );
+    is_deeply( $adapter->doQuery( 'id', "SELECT  id\nFROM t" ), { 5 => { id => 5 } }, 'a SELECT is keyed by the column' );
+    is_deeply( [ map { $_->[0] } $db->statements ], [ 'UPDATE domain SET x = 1', 'SELECT boom', 'SELECT id FROM t' ], 'and the statements are recorded normalised, once' );
+}
+
 is( \&iMSCP::Database::factory, $realFactory, 'the real factory() is back' );
 like( ( eval { stub_db(); 1 } ? '' : $@ ), qr/keep it/, 'a guard thrown away at once is refused' );
 

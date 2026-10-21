@@ -29,7 +29,9 @@ KEEP=no
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --image) IMAGE="$2"; shift 2 ;;
+        --image)
+            [ "$#" -ge 2 ] || die "--image needs a value (see the usage at the top of $0)"
+            IMAGE="$2"; shift 2 ;;
         --link) LINK=yes; shift ;;
         --keep) KEEP=yes; shift ;;
         --) shift; break ;;
@@ -42,7 +44,9 @@ CONTAINER="imscp-ci-engine-$$"
 
 cleanup() {
     rc=$?
-    if [ "$rc" -ne 0 ]; then
+    # Diagnostics only for a container that exists: not when docker run itself
+    # failed, or never ran.
+    if [ "$rc" -ne 0 ] && docker inspect "$CONTAINER" >/dev/null 2>&1; then
         ci_failed_units "$CONTAINER"
         printf '\n--- newest engine logs\n' >&2
         docker exec "$CONTAINER" sh -c \
