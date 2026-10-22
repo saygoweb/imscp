@@ -98,8 +98,7 @@ $page = $this->navigation->findActive($container, 0)['page'];
 <div class="footer">
     <?php $config = Registry::get('config'); ?>
     i-MSCP <?= tohtml($config['Version'] ?: tr('Unknown'))?><br>
-    Build: <?= tohtml($config['Build'] ?: tr('Unknown')) ?><br>
-    Codename: <?= tohtml($config['CodeName'] ?: tr('Unknown'))?>
+    Build: <?= tohtml($config['Build'] ?: tr('Unknown')) ?>
 </div>
 </body>
 </html>

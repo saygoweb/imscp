@@ -98,7 +98,6 @@ use iMSCP\Exception\Exception;
  * @property string GUI_ROOT_DIR path to GUI
  * @property string SERVER_HOSTNAME Server hostname
  * @property string Version
- * @property string CodeName
  * @property string GUI_APS_DIR Directory for software repositories
  * @property int ENABLE_SSL Tells whether or not SSL feature for customers is enabled
  * @property bool MAIN_MENU_SHOW_LABELS Tells whether or not labels must be showed for main menu links

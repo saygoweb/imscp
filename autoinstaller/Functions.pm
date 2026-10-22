@@ -104,7 +104,7 @@ sub loadConfig
         # Merge old configuration in new configuration, excluding upstream defined values
         while ( my ( $key, $value ) = each( %::imscpOldConfig ) ) {
             next unless exists $::imscpConfig{$key};
-            next if $key =~ /^(?:Build|Version|CodeName|PluginApi|THEME_ASSETS_VERSION|COMPOSER_VERSION)$/;
+            next if $key =~ /^(?:Build|Version|PluginApi|THEME_ASSETS_VERSION|COMPOSER_VERSION)$/;
             $::imscpConfig{$key} = $value;
         }
 
@@ -115,11 +115,38 @@ sub loadConfig
         }
     }
 
+    # Version and build of the Git checkout the installer runs from, when it is one
+    my @gitVersion = getGitVersion( $FindBin::Bin );
+    @{main::imscpConfig}{qw/ Version Build /} = @gitVersion if @gitVersion;
+
     # Set system based values
     @{main::imscpConfig}{qw/ DISTRO_ID DISTRO_CODENAME DISTRO_RELEASE /} = (
         lc $lsb->getId( TRUE ), lc $lsb->getCodename( TRUE ),
         $lsb->getRelease( TRUE, TRUE )
     );
+}
+
+=item getGitVersion( $dir )
+
+ Get the i-MSCP version and build from the Git checkout in the given directory
+
+ Param string $dir i-MSCP source directory
+ Return list The nearest version tag and the short SHA of HEAD, or an empty list if $dir isn't a Git checkout or has no version tag
+
+=cut
+
+sub getGitVersion
+{
+    my ( $dir ) = @_;
+
+    return unless -e "$dir/.git";
+
+    # The installer runs as root, usually from a checkout owned by another user
+    my @git = ( 'git', '-c', "safe.directory=$dir", '-C', $dir );
+    my ( $version, $build, $stderr );
+    execute( [ @git, qw/ describe --tags --abbrev=0 --match [0-9]* / ], \$version, \$stderr ) == 0 or return;
+    execute( [ @git, qw/ rev-parse --short HEAD / ], \$build, \$stderr ) == 0 or return;
+    ( $version, $build );
 }
 
 =item install( )
