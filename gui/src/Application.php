@@ -251,6 +251,7 @@ class Application
         $this->setTimezone();
         $this->initDatabase();
         $this->mergeConfig();
+        $this->setVersionFromGit();
         $this->setUserGuiProperties();
         $this->initLocalization();
         $this->initLayout();
@@ -595,6 +596,29 @@ class Application
 
         // Make main configuration available through registry (bc)
         Registry::set('config', $this->config);
+    }
+
+    /**
+     * Set version and build from the Git checkout the panel runs from
+     *
+     * Falls back to the installed version and build (imscp.conf) when the panel
+     * doesn't run from a Git checkout. Cached for a minute, so that a
+     * `git pull` shows up without running Git on every request.
+     *
+     * @return void
+     */
+    protected function setVersionFromGit()
+    {
+        $cache = $this->getCache();
+
+        if (!($gitVersion = $cache->load('iMSCP_GitVersion'))) {
+            $gitVersion = ['version' => GitVersion::get(GUI_ROOT_DIR)];
+            $cache->save($gitVersion, 'iMSCP_GitVersion', [], 60);
+        }
+
+        if ($gitVersion['version'] !== NULL) {
+            list($this->config['Version'], $this->config['Build']) = $gitVersion['version'];
+        }
     }
 
     /**
