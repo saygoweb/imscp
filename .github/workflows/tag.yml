@@ -1,0 +1,45 @@
+name: Tag
+
+# Tags every push to main with the next patch version: 1.5.3 -> 1.5.4. The
+# installer records the nearest version tag as the i-MSCP version, and the
+# commit's short SHA as the build (autoinstaller::Functions::getGitVersion), so
+# the panel shows the release it was installed from.
+#
+# Only plain X.Y.Z tags count; the old 1.5.3-2018120800 style ones are ignored.
+# A minor or major bump is made by pushing the new X.Y.0 tag by hand; the next
+# merge then carries on from it.
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Tag the next patch version
+        run: |
+          if git tag --points-at HEAD | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "HEAD is already tagged: $(git tag --points-at HEAD | tr '\n' ' ')"
+              exit 0
+          fi
+
+          latest="$(git tag --list | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)"
+          IFS=. read -r major minor patch <<< "${latest:-0.0.0}"
+          next="$major.$minor.$((patch + 1))"
+
+          git tag "$next" HEAD
+          git push origin "refs/tags/$next"
+          echo "Tagged $GITHUB_SHA as $next (previous: ${latest:-none})" >> "$GITHUB_STEP_SUMMARY"
