@@ -461,15 +461,6 @@ function checkInputData()
             'error'
         );
         $errFieldsStack[] = 'nreseller_mail_quota';
-    } elseif ($diskspace != '0' && $mailQuota == '0') {
-        set_page_message(
-            tohtml(tr(
-                'Mail quota cannot be unlimited. Max value is %d MiB.',
-                $diskspace
-            )),
-            'error'
-        );
-        $errFieldsStack[] = 'nreseller_mail_quota';
     }
 
     // Ftp accounts limit

@@ -10,7 +10,7 @@
             var $mailQuotaField = $("#nreseller_mail_quota");
 
             if (storageQuotaLimit > 0) {
-                $mailQuotaField.attr("min", 1).attr("max", storageQuotaLimit);
+                $mailQuotaField.attr("min", 0).attr("max", storageQuotaLimit);
                 return;
             }
 
