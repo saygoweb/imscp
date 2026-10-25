@@ -225,17 +225,24 @@ privileged or likely to be taken:
 
 | Service | In the container | On the host (default) |
 |---|---|---|
-| Control panel | 8880 / 8443 | `PANEL_HTTP_PORT` 8880 / `PANEL_HTTPS_PORT` 8443 |
+| Control panel | the same as on the host | `PANEL_HTTP_PORT` 8880 / `PANEL_HTTPS_PORT` 8443 |
 | Client web sites | 80 / 443 | `HTTP_PORT` 8080 / `HTTPS_PORT` 8444 |
 | FTP | 21 | `FTP_PORT` 2121 |
-| FTP passive | 32768-32777 | the same, unchanged |
+| FTP passive | the same as on the host | `FTP_PASSIVE_PORTS` 32768-32777 |
 | SMTP / submission | 25 / 587 | `SMTP_PORT` 2525 / `SUBMISSION_PORT` 5587 |
 | IMAP / IMAPS | 143 / 993 | `IMAP_PORT` 1143 / `IMAPS_PORT` 9993 |
 | POP3 / POP3S | 110 / 995 | `POP3_PORT` 1110 / `POP3S_PORT` 9995 |
 | DNS | 53 | `DNS_PORT` 15353 |
 
-The FTP passive range is the one exception that cannot be remapped: proftpd
-tells the client which port to connect to, so host and container have to agree.
+Two kinds of port are not remapped, so host and container use the same number.
+The FTP passive range cannot be: proftpd tells the client which port to connect
+to. The panel's ports are what the installer configures nginx with, and the
+panel builds its own URLs from them. Both are therefore fixed when i-MSCP is
+installed: changing one in `.env` afterwards needs a re-install.
+
+`init` picks every port, and a 10-port passive range, that is free on the host
+and not already picked for another service, so a second stack (for a worktree,
+say) comes up beside the first.
 
 Client web sites are name-based, so reaching one through `HTTP_PORT` means
 sending the right `Host:` header — either add the name to your `/etc/hosts`
