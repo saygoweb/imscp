@@ -207,12 +207,50 @@ port_in_use() {
     return 0
 }
 
+# Ports init has already handed to another service in this run. Each probe
+# only sees what is listening now, so without this two services that both start
+# from a taken port (the panel's 8443 and the sites' 8444) walk up to the same
+# free one. The finders below return their pick in $free_port rather than on
+# stdout: a $(...) call runs in a subshell, which would lose the claim.
+_claimed_ports=' '
+port_claimed() {
+    case "$_claimed_ports" in
+        *" $1 "*) return 0 ;;
+    esac
+    return 1
+}
+
 find_free_port() {
     local port="$1"
-    while port_in_use "$port"; do
+    while port_in_use "$port" || port_claimed "$port"; do
         port=$((port + 1))
     done
-    printf '%s' "$port"
+    _claimed_ports="$_claimed_ports$port "
+    free_port="$port"
+}
+
+# A free run of ports for FTP passive mode, as "first-last", starting from the
+# first port of the given range and moving a whole range at a time.
+find_free_port_range() {
+    local first="${1%%-*}" last="${1##*-}"
+    local size=$((last - first + 1)) port taken
+
+    while :; do
+        taken=0
+        for ((port = first; port < first + size; port++)); do
+            if port_in_use "$port" || port_claimed "$port"; then
+                taken=1
+                break
+            fi
+        done
+        [ "$taken" = 0 ] && break
+        first=$((first + size))
+    done
+
+    for ((port = first; port < first + size; port++)); do
+        _claimed_ports="$_claimed_ports$port "
+    done
+    free_port="$first-$((first + size - 1))"
 }
 
 # The plugin directory name is not the checkout's name: i-MSCP wants the name
@@ -271,24 +309,25 @@ cmd_init() {
     fi
 
     info "probing for free ports"
-    local panel_http panel_https http https ftp smtp submission imap imaps pop3 pop3s dns
-    panel_http="$(find_free_port "$PANEL_HTTP_PORT")"
-    panel_https="$(find_free_port "$PANEL_HTTPS_PORT")"
-    http="$(find_free_port "$HTTP_PORT")"
-    https="$(find_free_port "$HTTPS_PORT")"
-    ftp="$(find_free_port "$FTP_PORT")"
-    smtp="$(find_free_port "$SMTP_PORT")"
-    submission="$(find_free_port "$SUBMISSION_PORT")"
-    imap="$(find_free_port "$IMAP_PORT")"
-    imaps="$(find_free_port "$IMAPS_PORT")"
-    pop3="$(find_free_port "$POP3_PORT")"
-    pop3s="$(find_free_port "$POP3S_PORT")"
-    dns="$(find_free_port "$DNS_PORT")"
+    local panel_http panel_https http https ftp ftp_passive smtp submission imap imaps pop3 pop3s dns
+    find_free_port "$PANEL_HTTP_PORT"; panel_http=$free_port
+    find_free_port "$PANEL_HTTPS_PORT"; panel_https=$free_port
+    find_free_port "$HTTP_PORT"; http=$free_port
+    find_free_port "$HTTPS_PORT"; https=$free_port
+    find_free_port "$FTP_PORT"; ftp=$free_port
+    find_free_port_range "$FTP_PASSIVE_PORTS"; ftp_passive=$free_port
+    find_free_port "$SMTP_PORT"; smtp=$free_port
+    find_free_port "$SUBMISSION_PORT"; submission=$free_port
+    find_free_port "$IMAP_PORT"; imap=$free_port
+    find_free_port "$IMAPS_PORT"; imaps=$free_port
+    find_free_port "$POP3_PORT"; pop3=$free_port
+    find_free_port "$POP3S_PORT"; pop3s=$free_port
+    find_free_port "$DNS_PORT"; dns=$free_port
 
     # Re-running with --force (e.g. because a port went stale) must not discard
     # anything added to .env by hand. Keep any KEY=value line whose key isn't
     # one this command itself generates.
-    local generated_keys='^(COMPOSE_PROJECT_NAME|PANEL_HTTP_PORT|PANEL_HTTPS_PORT|HTTP_PORT|HTTPS_PORT|FTP_PORT|SMTP_PORT|SUBMISSION_PORT|IMAP_PORT|IMAPS_PORT|POP3_PORT|POP3S_PORT|DNS_PORT)='
+    local generated_keys='^(COMPOSE_PROJECT_NAME|PANEL_HTTP_PORT|PANEL_HTTPS_PORT|HTTP_PORT|HTTPS_PORT|FTP_PORT|FTP_PASSIVE_PORTS|SMTP_PORT|SUBMISSION_PORT|IMAP_PORT|IMAPS_PORT|POP3_PORT|POP3S_PORT|DNS_PORT)='
     local preserved=""
     if [ -f "$ENV_FILE" ]; then
         preserved="$(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$ENV_FILE" | grep -vE "$generated_keys" || true)"
@@ -306,6 +345,7 @@ PANEL_HTTPS_PORT=$panel_https
 HTTP_PORT=$http
 HTTPS_PORT=$https
 FTP_PORT=$ftp
+FTP_PASSIVE_PORTS=$ftp_passive
 SMTP_PORT=$smtp
 SUBMISSION_PORT=$submission
 IMAP_PORT=$imap
