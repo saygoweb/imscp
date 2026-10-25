@@ -759,11 +759,6 @@ function reseller_checkAndUpdateData($domainId)
             } elseif ($data['domain_disk_limit'] != 0 && $data['mail_quota'] > $data['domain_disk_limit']) {
                 set_page_message(tr('Mail quota cannot be bigger than disk space limit.'), 'error');
                 $errFieldsStack[] = 'mail_quota';
-            } elseif ($data['domain_disk_limit'] != 0 && $data['mail_quota'] == 0) {
-                set_page_message(
-                    tr('Mail quota cannot be unlimited. Max value is %d MiB.', $data['domain_disk_limit']), 'error'
-                );
-                $errFieldsStack[] = 'mail_quota';
             } else {
                 $mailData = getMailData($data['domain_id'], $data['fallback_mail_quota']);
 

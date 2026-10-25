@@ -211,3 +211,219 @@ function getResellerStats($resellerId)
         $rdiskConsumed
     ];
 }
+
+/**
+ * Disk usage at or above this percentage of the limit is reported as approaching it
+ */
+define('DISK_USAGE_APPROACHING_PERCENT', 80);
+
+/**
+ * Grade disk usage against a disk limit
+ *
+ * The panel does not enforce the disk limit for web, mail or SQL; ProFTPD still
+ * refuses FTP uploads at the limit. Usage above the
+ * limit is over it; at or above DISK_USAGE_APPROACHING_PERCENT it is
+ * approaching it.
+ *
+ * @param int|float $usageBytes Disk usage in bytes
+ * @param int|float $limitBytes Disk limit in bytes (0 = unlimited)
+ * @return array ['state' => 'ok'|'approaching'|'over', 'percent' => int]
+ */
+function getDiskUsageState($usageBytes, $limitBytes)
+{
+    if ($limitBytes <= 0) {
+        return ['state' => 'ok', 'percent' => 0];
+    }
+
+    $percent = (int)floor($usageBytes / $limitBytes * 100);
+
+    if ($usageBytes > $limitBytes) {
+        $state = 'over';
+    } elseif ($usageBytes * 100 >= $limitBytes * DISK_USAGE_APPROACHING_PERCENT) {
+        $state = 'approaching';
+    } else {
+        $state = 'ok';
+    }
+
+    return ['state' => $state, 'percent' => $percent];
+}
+
+/**
+ * Get the label of a disk usage state
+ *
+ * @param string $state 'ok'|'approaching'|'over'
+ * @return string Label, empty when the state is ok
+ */
+function getDiskUsageStateLabel($state)
+{
+    if ($state == 'over') {
+        return tr('Over limit');
+    }
+
+    return $state == 'approaching' ? tr('Approaching limit') : '';
+}
+
+/**
+ * Get the message telling a customer their disk usage approaches or exceeds their disk limit
+ *
+ * @param int|float $usageBytes Disk usage in bytes
+ * @param int|float $limitBytes Disk limit in bytes (0 = unlimited)
+ * @return string Message, empty when usage is within the limit
+ */
+function getDiskUsageWarning($usageBytes, $limitBytes)
+{
+    $usage = getDiskUsageState($usageBytes, $limitBytes);
+
+    switch ($usage['state']) {
+        case 'approaching':
+            return tr(
+                'You have used %s of your %s disk space (%d%%). Consider reducing usage or contact your reseller to upgrade your plan.',
+                bytesHuman($usageBytes), bytesHuman($limitBytes), $usage['percent']
+            );
+        case 'over':
+            return tr(
+                'You are using %s of your %s disk space. Your plan may be upgraded. Reduce usage or contact your reseller.',
+                bytesHuman($usageBytes), bytesHuman($limitBytes)
+            );
+        default:
+            return '';
+    }
+}
+
+/**
+ * Format an account's mail quota limit
+ *
+ * A mail quota of 0 has no limit of its own; with a disk limit it is bounded by it.
+ *
+ * @param int|float $mailQuotaBytes Account mail quota in bytes (0 = none of its own)
+ * @param int|float $diskLimitBytes Account disk limit in bytes (0 = unlimited)
+ * @return string
+ */
+function formatMailQuotaLimit($mailQuotaBytes, $diskLimitBytes)
+{
+    if ($mailQuotaBytes > 0) {
+        return bytesHuman($mailQuotaBytes);
+    }
+
+    if ($diskLimitBytes > 0) {
+        return tr('up to %s (account disk limit)', bytesHuman($diskLimitBytes));
+    }
+
+    return '∞';
+}
+
+/**
+ * Format a mailbox's usage for the mailbox list
+ *
+ * @param int|float|null $usageBytes Mailbox usage in bytes, NULL if unknown
+ * @param int|float $quotaBytes Mailbox quota in bytes (0 = unlimited)
+ * @param int|float $diskLimitBytes Account disk limit in bytes (0 = unlimited)
+ * @return string
+ */
+function formatMailboxUsage($usageBytes, $quotaBytes, $diskLimitBytes)
+{
+    if ($quotaBytes > 0) {
+        if (NULL === $usageBytes) {
+            return '- / ' . bytesHuman($quotaBytes);
+        }
+
+        return sprintf(
+            '%s / %s (%.0f%%)',
+            bytesHuman($usageBytes),
+            bytesHuman($quotaBytes),
+            min(100, round($usageBytes / $quotaBytes * 100))
+        );
+    }
+
+    if (NULL === $usageBytes) {
+        $usageBytes = 0;
+    }
+
+    if ($diskLimitBytes > 0) {
+        return tr(
+            '%s / %s (account limit) – %d%%',
+            bytesHuman($usageBytes), bytesHuman($diskLimitBytes), floor($usageBytes / $diskLimitBytes * 100)
+        );
+    }
+
+    return bytesHuman($usageBytes) . ' / ∞';
+}
+
+/**
+ * Say when an account's disk usage was last measured
+ *
+ * @param int|null $timestamp Unix time of the last measurement, NULL if never
+ * @param string $dateFormat Date format (config DATE_FORMAT)
+ * @return string
+ */
+function formatDiskUsageMeasuredAt($timestamp, $dateFormat)
+{
+    if (empty($timestamp)) {
+        return tr('Not measured yet');
+    }
+
+    return tr('Measured %s', date($dateFormat . ' H:i', (int)$timestamp));
+}
+
+/**
+ * Get the summary line of customers over or approaching their disk limit
+ *
+ * @param int $overCount Customers over their disk limit
+ * @param int $approachingCount Customers approaching their disk limit
+ * @return string Summary, empty when both counts are 0
+ */
+function getDiskUsageSummaryMessage($overCount, $approachingCount)
+{
+    if ($overCount == 0 && $approachingCount == 0) {
+        return '';
+    }
+
+    return tr('%d customers over their disk limit, %d approaching', $overCount, $approachingCount);
+}
+
+/**
+ * Get the reseller's customers that are over or approaching their disk limit
+ *
+ * Domains that are disabled or being deleted are skipped: the daily disk usage job does not re-measure them.
+ *
+ * @param int $resellerId Reseller unique identifier
+ * @return array [customer admin ID => ['state' => 'approaching'|'over', 'percent' => int]]
+ */
+function getResellerDiskUsageStates($resellerId)
+{
+    $stmt = exec_query(
+        '
+            SELECT t1.domain_admin_id, t1.domain_disk_usage, t1.domain_disk_limit
+            FROM domain AS t1
+            JOIN admin AS t2 ON(t2.admin_id = t1.domain_admin_id)
+            WHERE t2.created_by = ?
+            AND t1.domain_status NOT IN (\'disabled\', \'todelete\')
+        ',
+        [$resellerId]
+    );
+
+    $states = [];
+    while ($row = $stmt->fetchRow(PDO::FETCH_ASSOC)) {
+        $usage = getDiskUsageState($row['domain_disk_usage'], $row['domain_disk_limit'] * 1048576);
+
+        if ($usage['state'] != 'ok') {
+            $states[$row['domain_admin_id']] = $usage;
+        }
+    }
+
+    return $states;
+}
+
+/**
+ * Count the reseller's customers that are over or approaching their disk limit
+ *
+ * @param int $resellerId Reseller unique identifier
+ * @return array ['over' => int, 'approaching' => int, 'states' => result of getResellerDiskUsageStates()]
+ */
+function getResellerDiskUsageCounts($resellerId)
+{
+    $states = getResellerDiskUsageStates($resellerId);
+    $counts = array_count_values(array_column($states, 'state')) + ['over' => 0, 'approaching' => 0];
+
+    return ['over' => $counts['over'], 'approaching' => $counts['approaching'], 'states' => $states];
+}

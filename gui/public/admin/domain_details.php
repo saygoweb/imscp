@@ -27,6 +27,7 @@
 
 use iMSCP\Event\EventAggregator;
 use iMSCP\Event\Events;
+use iMSCP\Registry;
 use iMSCP\TemplateEngine;
 
 /**
@@ -42,7 +43,7 @@ function admin_gen_mail_quota_limit_mgs($customerId)
         'SELECT IFNULL(SUM(quota), 0) FROM mail_users WHERE domain_id = ?', $domainProps['domain_id']
     )->fetchRow(PDO::FETCH_COLUMN);
 
-    return [bytesHuman($mailQuota), ($domainProps['mail_quota'] == 0) ? '∞' : bytesHuman($domainProps['mail_quota'])];
+    return [bytesHuman($mailQuota), formatMailQuotaLimit($domainProps['mail_quota'], $domainProps['domain_disk_limit'] * 1048576)];
 }
 
 /**
@@ -94,6 +95,7 @@ function admin_generatePage($tpl, $domainId)
     // Get usages in percent
     $trafficUsagePercent = getPercentUsage($trafficUsageBytes, $trafficLimitBytes);
     $diskspaceUsagePercent = getPercentUsage($domainData['domain_disk_usage'], $diskspaceLimitBytes);
+    $diskState = getDiskUsageState($domainData['domain_disk_usage'], $diskspaceLimitBytes);
 
     // Get mail quota info
     list($quota, $quotaLimit) = admin_gen_mail_quota_limit_mgs($domainData['domain_admin_id']);
@@ -115,7 +117,15 @@ function admin_generatePage($tpl, $domainId)
         'VL_TRAFFIC_LIMIT'           => bytesHuman($trafficLimitBytes),
         'VL_DISK_PERCENT'            => $diskspaceUsagePercent,
         'VL_DISK_USED'               => bytesHuman($domainData['domain_disk_usage']),
-        'VL_DISK_LIMIT'              => bytesHuman($diskspaceLimitBytes),
+        'VL_DISK_LIMIT'              => $diskspaceLimitBytes > 0 ? bytesHuman($diskspaceLimitBytes) : '∞',
+        'VL_DISK_STATE'              => tohtml(getDiskUsageStateLabel($diskState['state'])),
+        'VL_DISK_STATE_CLASS'        => tohtml('disk_' . $diskState['state'], 'htmlAttr'),
+        'VL_DISK_MEASURED'           => tohtml(formatDiskUsageMeasuredAt(
+            $domainData['domain_disk_usage_time'], Registry::get('config')['DATE_FORMAT']
+        )),
+        'VL_DISK_FILE'               => bytesHuman($domainData['domain_disk_file']),
+        'VL_DISK_MAIL'               => bytesHuman($domainData['domain_disk_mail']),
+        'VL_DISK_SQL'                => bytesHuman($domainData['domain_disk_sql']),
         'VL_MAIL_ACCOUNTS_USED'      => get_customer_mail_accounts_count($domainId),
         'VL_MAIL_ACCOUNTS_LIMIT'     => translate_limit_value($domainData['domain_mailacc_limit']),
         'VL_MAIL_QUOTA_USED'         => tohtml($quota),
@@ -160,6 +170,9 @@ $tpl->assign([
         'TR_BACKUP_SUPP'       => tr('Backup'),
         'TR_TRAFFIC'           => tr('Traffic'),
         'TR_DISK'              => tr('Disk'),
+    'TR_DISK_FILE_USAGE'   => tr('File usage'),
+    'TR_DISK_MAIL_USAGE'   => tr('Mail usage'),
+    'TR_DISK_SQL_USAGE'    => tr('Database usage'),
         'TR_FEATURE'           => tr('Feature'),
         'TR_USED'              => tr('Used'),
         'TR_LIMIT'             => tr('Limit'),

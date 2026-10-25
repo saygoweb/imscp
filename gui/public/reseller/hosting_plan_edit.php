@@ -413,9 +413,6 @@ function checkInputData()
         } elseif ($diskSpace != 0 && $mailQuota > $diskSpace) {
             set_page_message(tr('Mail quota cannot be bigger than disk space limit.'), 'error');
             $errFieldsStack[] = 'mail_quota';
-        } elseif ($diskSpace != 0 && $mailQuota == 0) {
-            set_page_message(tr('Mail quota cannot be unlimited. Max value is %d MiB.', $diskSpace), 'error');
-            $errFieldsStack[] = 'mail_quota';
         }
     } else {
         $mailQuota = $diskSpace;

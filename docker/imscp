@@ -392,7 +392,7 @@ cmd_install() {
     # database rows that name directories it has just moved aside — see the
     # header of plugins-detach.sh for both failures in full. So the plugins come
     # out first and go back at the end.
-    c_exec "$SERVICE" sh "$CONTAINER_SCRIPTS/plugins-detach.sh"
+    c_exec sh "$CONTAINER_SCRIPTS/plugins-detach.sh"
 
     # Interactive-capable (no -T) so progress is streamed as it happens.
     local rc=0
@@ -404,7 +404,7 @@ cmd_install() {
     # row restore run even when the installer failed: a failed install is a bad
     # reason to leave the tree unlinked and the plugin table empty.
     cmd_link
-    c_exec "$SERVICE" sh "$CONTAINER_SCRIPTS/plugins-reattach.sh"
+    c_exec sh "$CONTAINER_SCRIPTS/plugins-reattach.sh"
 
     [ "$rc" -eq 0 ] || die "the installer failed (exit $rc); plugins have been restored"
 }

@@ -62,11 +62,8 @@ function gen_mail_quota_limit_mgs()
         'SELECT IFNULL(SUM(quota), 0) FROM mail_users WHERE domain_id = ?', $domainProps['domain_id']
     )->fetchRow(PDO::FETCH_COLUMN);
 
-    if ($domainProps['mail_quota'] == 0) {
-        return bytesHuman($mailQuota) . ' / ∞';
-    }
-
-    return bytesHuman($mailQuota) . ' / ' . bytesHuman($domainProps['mail_quota']);
+    return bytesHuman($mailQuota) . ' / '
+        . formatMailQuotaLimit($domainProps['mail_quota'], $domainProps['domain_disk_limit'] * 1048576);
 }
 
 /**
@@ -141,8 +138,10 @@ function client_generateDiskUsageBar(TemplateEngine $tpl, $usage, $maxUsage)
         'DISK_USAGE_DATA'    => tohtml($diskUsageData),
     ]);
 
-    if ($maxUsage > 0 && $usage > $maxUsage) {
-        $tpl->assign('TR_DISK_WARNING', tr('You are exceeding your disk space limit.'));
+    $warning = getDiskUsageWarning($usage, $maxUsage);
+
+    if ($warning !== '') {
+        $tpl->assign('TR_DISK_WARNING', tohtml($warning));
     } else {
         $tpl->assign('DISK_WARNING', '');
     }
@@ -382,7 +381,10 @@ $tpl->assign([
     'TR_DISK_DATABASE_USAGE'                   => tr('Database usage'),
     'DISK_SQLSIZE'                             => bytesHuman($domainProperties['domain_disk_sql']),
     'TR_DISK_MAIL_USAGE'                       => tr('Mail usage'),
-    'DISK_MAILSIZE'                            => bytesHuman($domainProperties['domain_disk_mail'])
+    'DISK_MAILSIZE'                            => bytesHuman($domainProperties['domain_disk_mail']),
+    'DISK_USAGE_MEASURED'                      => tohtml(
+        formatDiskUsageMeasuredAt($domainProperties['domain_disk_usage_time'], $cfg['DATE_FORMAT'])
+    )
 ]);
 
 generatePageMessage($tpl);

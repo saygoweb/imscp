@@ -47,6 +47,7 @@ function _generateUserStatistics(TemplateEngine $tpl, $adminId)
         ) = getClientItemCountsAndLimits($adminId);
     $trafficPercent = getPercentUsage($trafficUsage, $trafficLimit);
     $diskPercent = getPercentUsage($diskUsage, $diskLimit);
+    $diskState = getDiskUsageState($diskUsage, $diskLimit);
     $tpl->assign([
         'USER_ID'               => tohtml($adminId),
         'USERNAME'              => tohtml(decode_idna(get_user_name($adminId))),
@@ -60,6 +61,9 @@ function _generateUserStatistics(TemplateEngine $tpl, $adminId)
         'DISK_MSG'              => ($diskLimit > 0)
             ? tohtml(sprintf('%s / %s', bytesHuman($diskUsage), bytesHuman($diskLimit)))
             : tohtml(sprintf('%s / ∞', bytesHuman($diskUsage))),
+        'DISK_STATE'            => tohtml(getDiskUsageStateLabel($diskState['state'])),
+        'DISK_STATE_CLASS'      => tohtml('disk_' . $diskState['state'], 'htmlAttr'),
+        'DISK_SORT'             => tohtml($diskLimit > 0 ? $diskUsage / $diskLimit : 0, 'htmlAttr'),
         'WEB'                   => tohtml(bytesHuman($webTraffic)),
         'FTP'                   => tohtml(bytesHuman($ftpTraffic)),
         'SMTP'                  => tohtml(bytesHuman($smtpTraffic)),
@@ -81,11 +85,42 @@ function _generateUserStatistics(TemplateEngine $tpl, $adminId)
  */
 function generatePage(TemplateEngine $tpl)
 {
+    $counts = getResellerDiskUsageCounts($_SESSION['user_id']);
+    $diskStates = $counts['states'];
+    $summary = getDiskUsageSummaryMessage($counts['over'], $counts['approaching']);
+    $filterDisk = isset($_GET['filter']) && $_GET['filter'] == 'disk';
+
+    if ($summary !== '') {
+        $tpl->assign('DISK_USAGE_SUMMARY', tohtml($summary));
+    } else {
+        $tpl->assign('DISK_USAGE_SUMMARY_BLOCK', '');
+    }
+
+    $tpl->assign([
+        'TR_FILTER_ALL'  => tohtml(tr('All customers')),
+        'TR_FILTER_DISK' => tohtml(tr('Approaching or over disk limit')),
+        // A filtered view is ordered by disk usage, ignoring the saved table state
+        'DT_STATE_SAVE'  => $filterDisk ? 'false' : 'true',
+        'DT_ORDER'       => $filterDisk ? '[[1, "desc"]]' : '[[0, "asc"]]'
+    ]);
+
     $stmt = exec_query('SELECT admin_id FROM admin WHERE created_by = ?', $_SESSION['user_id']);
 
+    $hasRows = false;
+
     while ($row = $stmt->fetchRow(PDO::FETCH_ASSOC)) {
+        if ($filterDisk && !isset($diskStates[$row['admin_id']])) {
+            continue;
+        }
+
         _generateUserStatistics($tpl, $row['admin_id']);
         $tpl->parse('USER_STATISTICS_ENTRY_BLOCK', '.user_statistics_entry_block');
+        $hasRows = true;
+    }
+
+    if (!$hasRows && $filterDisk) {
+        $tpl->assign('USER_STATISTICS_ENTRY_BLOCK', '');
+        set_page_message(tr('No customers are approaching or over their disk limit.'), 'static_info');
     }
 }
 
@@ -100,6 +135,7 @@ $tpl->define_dynamic([
     'layout'                        => 'shared/layouts/ui.tpl',
     'page'                          => 'reseller/user_statistics.tpl',
     'page_message'                  => 'layout',
+    'disk_usage_summary_block'      => 'page',
     'user_statistics_entries_block' => 'page',
     'user_statistics_entry_block'   => 'user_statistics_entries_block'
 ]);

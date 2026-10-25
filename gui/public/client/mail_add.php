@@ -311,10 +311,12 @@ function generatePage($tpl)
 
     if ($customerEmailQuotaLimitBytes < 1) {
         $tpl->assign([
-            'TR_QUOTA'  => tohtml(tr('Quota in MiB (0 ∞)')),
+            'TR_QUOTA'  => tohtml($mainDmnProps['domain_disk_limit'] > 0
+                ? tr("Quota in MiB (0 = up to the account's %s)", bytesHuman($mainDmnProps['domain_disk_limit'] * 1048576))
+                : tr('Quota in MiB (0 ∞)')),
             'MIN_QUOTA' => 0,
             'MAX_QUOTA' => tohtml(17592186044416, 'htmlAttr'), // Max quota = MySQL UNSIGNED BIGINT in MiB
-            'QUOTA'     => isset($_POST['quota']) ? tohtml(filter_digits($_POST['quota']), 'htmlAttr') : 10
+            'QUOTA'     => isset($_POST['quota']) ? tohtml(filter_digits($_POST['quota']), 'htmlAttr') : 0
         ]);
         $mailTypeForwardOnly = false;
     } else {

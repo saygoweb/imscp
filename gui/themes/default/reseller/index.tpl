@@ -75,3 +75,6 @@
     <span style="width:{DISK_PERCENT_WIDTH}%"></span>
     <strong>{DISK_PERCENT}%</strong>
 </div>
+<!-- BDP: customers_disk_summary_message -->
+<div class="warning">{CUSTOMERS_DISK_SUMMARY} – <a href="user_statistics.php?filter=disk">{TR_CUSTOMERS_DISK_DETAILS}</a></div>
+<!-- EDP: customers_disk_summary_message -->

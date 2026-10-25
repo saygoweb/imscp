@@ -9,12 +9,13 @@
             var storageQuotaLimit = parseInt($(this).val());
             var $mailQuotaField = $("#nreseller_mail_quota");
 
-            if (storageQuotaLimit > 0) {
-                $mailQuotaField.attr("min", 1).attr("max", storageQuotaLimit);
-                return;
-            }
+            $mailQuotaField.attr("min", 0);
 
-            $mailQuotaField.attr("min", 0).removeAttr("max");
+            if (storageQuotaLimit > 0) {
+                $mailQuotaField.attr("max", storageQuotaLimit);
+            } else {
+                $mailQuotaField.removeAttr("max");
+            }
         });
     });
 </script>
