@@ -368,6 +368,8 @@ function getDiskUsageSummaryMessage($overCount, $approachingCount)
 /**
  * Get the reseller's customers that are over or approaching their disk limit
  *
+ * Domains that are disabled or being deleted are skipped: the daily disk usage job does not re-measure them.
+ *
  * @param int $resellerId Reseller unique identifier
  * @return array [customer admin ID => ['state' => 'approaching'|'over', 'percent' => int]]
  */
@@ -379,6 +381,7 @@ function getResellerDiskUsageStates($resellerId)
             FROM domain AS t1
             JOIN admin AS t2 ON(t2.admin_id = t1.domain_admin_id)
             WHERE t2.created_by = ?
+            AND t1.domain_status NOT IN (\'disabled\', \'todelete\')
         ',
         [$resellerId]
     );

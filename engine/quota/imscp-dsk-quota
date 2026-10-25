@@ -72,6 +72,7 @@ sub quotaFiles
             "SELECT domain_id, domain_name FROM domain WHERE domain_status NOT IN ('disabled', 'todelete')", 'domain_id'
         );
 
+        my $updateMailboxSth = $dbh->prepare( 'UPDATE mail_users SET mail_disk_usage = ? WHERE mail_addr = ?' );
         my $virtualMailDir = Servers::mta->factory()->{'config'}->{'MTA_VIRTUAL_MAIL_DIR'};
 
         while ( my ($dmnId, $dmnData) = each( %{$rows} ) ) {
@@ -119,6 +120,7 @@ sub quotaFiles
             }
 
             my %mailboxUsage;
+            my $duFailed = 0;
             my $mailAddrs = eval {
                 $dbh->selectcol_arrayref(
                     "SELECT mail_addr FROM mail_users WHERE domain_id = ? AND mail_type LIKE '%\\_mail%'",
@@ -139,7 +141,11 @@ sub quotaFiles
                         [ 'du', '--exclude=backups/*', '--exclude=logs/*', '-s', '-B1', $dir ], \ my $stdout,
                         \ my $stderr
                     );
-                    error( $stderr || 'Unknown error' ) if $rs;
+                    if ( $rs ) {
+                        error( $stderr || 'Unknown error' );
+                        $duFailed = 1;
+                    }
+
                     $webDiskUsage = $1 if $stdout && $stdout =~ /^(\d+)/;
                     next;
                 }
@@ -154,7 +160,10 @@ sub quotaFiles
                 }
 
                 my $rs = execute( [ 'du', '-B1', '--max-depth=1', $dir ], \ my $stdout, \ my $stderr );
-                error( $stderr || 'Unknown error' ) if $rs;
+                if ( $rs ) {
+                    error( $stderr || 'Unknown error' );
+                    $duFailed = 1;
+                }
 
                 my ( $total, $byAcc ) = iMSCP::DiskUsage::parseDuMaxDepth1( $stdout, $dir );
                 $mailDiskUsage += $total;
@@ -175,14 +184,12 @@ sub quotaFiles
                     '
                         UPDATE domain
                         SET domain_disk_usage = ?, domain_disk_file = ?, domain_disk_mail = ?,
-                            domain_disk_usage_time = UNIX_TIMESTAMP()
+                            domain_disk_usage_time = IF(?, domain_disk_usage_time, UNIX_TIMESTAMP())
                         WHERE domain_id = ?
                     ',
-                    undef, $totalDiskUsage, $webDiskUsage, $mailDiskUsage, $dmnId
+                    undef, $totalDiskUsage, $webDiskUsage, $mailDiskUsage, $duFailed, $dmnId
                 );
-                $dbh->do(
-                    'UPDATE mail_users SET mail_disk_usage = ? WHERE mail_addr = ?', undef, $mailboxUsage{$_}, $_
-                ) for keys %mailboxUsage;
+                $updateMailboxSth->execute( $mailboxUsage{$_}, $_ ) for keys %mailboxUsage;
                 $dbh->do(
                     'UPDATE quotatallies SET bytes_in_used = ? WHERE name = ?',
                     undef, $totalDiskUsage, $dmnData->{'domain_name'}
