@@ -1,0 +1,12 @@
+{
+  "name": "imscp/gui-tests",
+  "description": "Unit tests for pure GUI helpers",
+  "type": "project",
+  "license": "LGPL-2.1-only",
+  "require-dev": {
+    "phpunit/phpunit": "^11.5"
+  },
+  "config": {
+    "sort-packages": true
+  }
+}
