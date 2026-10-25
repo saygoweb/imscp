@@ -84,7 +84,7 @@ insert ignore into `config` (`name`, `value`) values
   ('PREVENT_EXTERNAL_LOGIN_ADMIN', '1'),
   ('PREVENT_EXTERNAL_LOGIN_RESELLER', '1'),
   ('PREVENT_EXTERNAL_LOGIN_CLIENT', '1'),
-  ('DATABASE_REVISION', '287');
+  ('DATABASE_REVISION', '288');
 
 -- --------------------------------------------------------
 
@@ -130,6 +130,7 @@ create table if not exists `domain` (
   `domain_disk_file` bigint(20) unsigned not null default '0',
   `domain_disk_mail` bigint(20) unsigned not null default '0',
   `domain_disk_sql` bigint(20) unsigned not null default '0',
+  `domain_disk_usage_time` int(10) unsigned default null,
   `domain_php` varchar(15) not null,
   `domain_cgi` varchar(15) not null,
   `allowbackup` varchar(12) not null default 'dmn|sql|mail',
@@ -412,6 +413,7 @@ create table if not exists `mail_users` (
   `mail_auto_respond` tinyint(1) not null default '0',
   `mail_auto_respond_text` text ,
   `quota` bigint(20) unsigned not null default '0',
+  `mail_disk_usage` bigint(20) unsigned not null default '0',
   `mail_addr` varchar(255) not null,
   primary key (`mail_id`),
   index `domain_id` (`domain_id`),

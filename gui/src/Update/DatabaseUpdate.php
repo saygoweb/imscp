@@ -78,7 +78,7 @@ class DatabaseUpdate extends AbstractUpdate
     /**
      * @var int Last database update revision
      */
-    protected $lastUpdate = 287;
+    protected $lastUpdate = 288;
 
     /**
      * Singleton - Make new unavailable
@@ -3302,5 +3302,22 @@ class DatabaseUpdate extends AbstractUpdate
         }
 
         return $statements;
+    }
+
+    /**
+     * Add per-mailbox disk usage and the time an account's disk usage was measured
+     *
+     * @return array SQL statements to be executed
+     */
+    protected function r288()
+    {
+        return [
+            $this->addColumn(
+                'mail_users', 'mail_disk_usage', "bigint(20) unsigned NOT NULL DEFAULT '0' AFTER quota"
+            ),
+            $this->addColumn(
+                'domain', 'domain_disk_usage_time', 'int(10) unsigned DEFAULT NULL AFTER domain_disk_sql'
+            )
+        ];
     }
 }
