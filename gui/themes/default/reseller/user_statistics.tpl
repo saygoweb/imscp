@@ -3,11 +3,19 @@
     $(function () {
         $('.datatable').dataTable({
             language: imscp_i18n.core.dataTable,
-            stateSave: true,
+            stateSave: {DT_STATE_SAVE},
+            order: {DT_ORDER},
             pagingType: "simple"
         });
     });
 </script>
+<!-- BDP: disk_usage_summary_block -->
+<div class="warning">{DISK_USAGE_SUMMARY}</div>
+<!-- EDP: disk_usage_summary_block -->
+<p>
+    <a href="user_statistics.php">{TR_FILTER_ALL}</a> |
+    <a href="user_statistics.php?filter=disk">{TR_FILTER_DISK}</a>
+</p>
 <table class="datatable">
     <thead>
     <tr>
@@ -49,12 +57,13 @@
         <td>
             <a href="user_statistics_details.php?user_id={USER_ID}" class="icon i_domain_icon" title="{TR_USER_TOOLTIP}">{USERNAME}</a>
         </td>
-        <td>
+        <td data-order="{DISK_SORT}">
             <div class="graph">
                 <span style="width:{DISK_PERCENT_WIDTH}%"></span>
                 <strong>{DISK_PERCENT}%</strong>
             </div>
             {DISK_MSG}
+            <br><strong class="{DISK_STATE_CLASS}">{DISK_STATE}</strong>
         </td>
         <td>
             <div class="graph">

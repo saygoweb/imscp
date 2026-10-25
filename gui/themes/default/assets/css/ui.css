@@ -1410,3 +1410,6 @@ iframe {
     padding: 0;
     border: 0;
 }
+
+.disk_over { color: #ca1d11; }
+.disk_approaching { color: #c87f0a; }

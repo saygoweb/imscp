@@ -58,6 +58,9 @@
         <td>
             <div class="graph"><span style="width:{VL_DISK_PERCENT}%">&nbsp;</span></div>
             {VL_DISK_USED} / {VL_DISK_LIMIT}
+            <strong class="{VL_DISK_STATE_CLASS}">{VL_DISK_STATE}</strong>
+            <br>{TR_DISK_FILE_USAGE}: {VL_DISK_FILE}, {TR_DISK_MAIL_USAGE}: {VL_DISK_MAIL}, {TR_DISK_SQL_USAGE}: {VL_DISK_SQL}
+            <br><small>{VL_DISK_MEASURED}</small>
         </td>
     </tr>
     </tbody>

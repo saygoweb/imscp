@@ -186,6 +186,19 @@ function generatePage(TemplateEngine $tpl, $resellerId, $resellerName)
         $tpl->assign('DISK_WARNING_MESSAGE', '');
     }
 
+    $diskStates = getResellerDiskUsageStates($resellerId);
+    $counts = array_count_values(array_column($diskStates, 'state')) + ['over' => 0, 'approaching' => 0];
+    $summary = getDiskUsageSummaryMessage($counts['over'], $counts['approaching']);
+
+    if ($summary !== '') {
+        $tpl->assign([
+            'CUSTOMERS_DISK_SUMMARY'    => tohtml($summary),
+            'TR_CUSTOMERS_DISK_DETAILS' => tohtml(tr('Show these customers'))
+        ]);
+    } else {
+        $tpl->assign('CUSTOMERS_DISK_SUMMARY_MESSAGE', '');
+    }
+
     $tpl->assign([
         'TR_ACCOUNT_LIMITS' => tohtml(tr('Account limits')),
         'TR_FEATURES'       => tohtml(tr('Features')),
@@ -241,7 +254,8 @@ $tpl->define_dynamic([
     'page'                    => 'reseller/index.tpl',
     'page_message'            => 'layout',
     'traffic_warning_message' => 'page',
-    'disk_warning_message'    => 'page'
+    'disk_warning_message'    => 'page',
+    'customers_disk_summary_message' => 'page'
 ]);
 $tpl->assign('TR_PAGE_TITLE', tohtml(tr('Reseller / General / Overview')));
 
