@@ -268,16 +268,15 @@ function generateMailAccountsList($tpl, $mainDmnId)
                 continue;
             }
 
-            $quotaPercent = min(100, round(($maildirsize['byte_count'] / max(1, $maildirsize['quota_bytes'])) * 100));
+            $quotaBytes = $maildirsize['quota_bytes'] > 0 ? $maildirsize['quota_bytes'] : $row['quota'];
+            $quotaPercent = min(100, round(($maildirsize['byte_count'] / max(1, $quotaBytes)) * 100));
 
             if (!$overQuota && $quotaPercent >= 100) {
                 $overQuota = true;
             }
 
             $mailSizeSort = (int)$maildirsize['byte_count'];
-            $mailQuotaInfo = formatMailboxUsage(
-                $maildirsize['byte_count'], $maildirsize['quota_bytes'], $diskLimitBytes
-            );
+            $mailQuotaInfo = formatMailboxUsage($maildirsize['byte_count'], $quotaBytes, $diskLimitBytes);
         }
 
         $tpl->assign([
@@ -319,12 +318,10 @@ function generateMailAccountsList($tpl, $mainDmnId)
 
     if ($hasUnlimitedMailboxes) {
         set_page_message(
-            empty($mainDmnProps['domain_disk_usage_time'])
-                ? tr('Sizes of mailboxes without a quota have not been measured yet.')
-                : tr(
-                    'Sizes of mailboxes without a quota were measured %s.',
-                    date(Registry::get('config')['DATE_FORMAT'] . ' H:i', $mainDmnProps['domain_disk_usage_time'])
-                ),
+            tr(
+                'Sizes of mailboxes without a quota: %s',
+                formatDiskUsageMeasuredAt($mainDmnProps['domain_disk_usage_time'], Registry::get('config')['DATE_FORMAT'])
+            ),
             'static_info'
         );
     }

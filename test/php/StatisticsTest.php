@@ -27,6 +27,13 @@ final class StatisticsTest extends TestCase
         $this->assertSame(['state' => $state, 'percent' => $percent], getDiskUsageState($usage, $limit));
     }
 
+    public function testGetDiskUsageStateLabel(): void
+    {
+        $this->assertSame('Over limit', getDiskUsageStateLabel('over'));
+        $this->assertSame('Approaching limit', getDiskUsageStateLabel('approaching'));
+        $this->assertSame('', getDiskUsageStateLabel('ok'));
+    }
+
     public function testGetDiskUsageWarning(): void
     {
         $this->assertSame('', getDiskUsageWarning(1 * self::GIB, 5 * self::GIB));

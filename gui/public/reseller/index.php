@@ -186,8 +186,7 @@ function generatePage(TemplateEngine $tpl, $resellerId, $resellerName)
         $tpl->assign('DISK_WARNING_MESSAGE', '');
     }
 
-    $diskStates = getResellerDiskUsageStates($resellerId);
-    $counts = array_count_values(array_column($diskStates, 'state')) + ['over' => 0, 'approaching' => 0];
+    $counts = getResellerDiskUsageCounts($resellerId);
     $summary = getDiskUsageSummaryMessage($counts['over'], $counts['approaching']);
 
     if ($summary !== '') {

@@ -136,8 +136,7 @@ function generatePage(TemplateEngine $tpl, $domainId)
         'VL_DISK_PERCENT'            => $diskspaceUsagePercent,
         'VL_DISK_USED'               => bytesHuman($domainData['domain_disk_usage']),
         'VL_DISK_LIMIT'              => $diskspaceLimitBytes > 0 ? bytesHuman($diskspaceLimitBytes) : '∞',
-        'VL_DISK_STATE'              => tohtml($diskState['state'] == 'over'
-            ? tr('Over limit') : ($diskState['state'] == 'approaching' ? tr('Approaching limit') : '')),
+        'VL_DISK_STATE'              => tohtml(getDiskUsageStateLabel($diskState['state'])),
         'VL_DISK_STATE_CLASS'        => tohtml('disk_' . $diskState['state'], 'htmlAttr'),
         'VL_DISK_MEASURED'           => tohtml(formatDiskUsageMeasuredAt(
             $domainData['domain_disk_usage_time'], Registry::get('config')['DATE_FORMAT']

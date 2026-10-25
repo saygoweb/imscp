@@ -141,12 +141,15 @@ sub quotaFiles
                         [ 'du', '--exclude=backups/*', '--exclude=logs/*', '-s', '-B1', $dir ], \ my $stdout,
                         \ my $stderr
                     );
-                    if ( $rs ) {
+                    # du exits non-zero when files vanish mid-scan, yet still prints the total
+                    if ( $stdout && $stdout =~ /^(\d+)/ ) {
+                        $webDiskUsage = $1;
+                        debug( $stderr ) if $rs && $stderr;
+                    } else {
                         error( $stderr || 'Unknown error' );
                         $duFailed = 1;
                     }
 
-                    $webDiskUsage = $1 if $stdout && $stdout =~ /^(\d+)/;
                     next;
                 }
 
@@ -160,19 +163,28 @@ sub quotaFiles
                 }
 
                 my $rs = execute( [ 'du', '-B1', '--max-depth=1', $dir ], \ my $stdout, \ my $stderr );
-                if ( $rs ) {
+                my ( $total, $byAcc, $complete ) = iMSCP::DiskUsage::parseDuMaxDepth1( $stdout, $dir );
+
+                # du exits non-zero when files vanish mid-scan, yet its output can still be complete
+                if ( $complete ) {
+                    debug( $stderr ) if $rs && $stderr;
+                } else {
                     error( $stderr || 'Unknown error' );
                     $duFailed = 1;
+
+                    # An incomplete scan leaves these mailboxes at their previous figures
+                    next;
                 }
 
-                my ( $total, $byAcc ) = iMSCP::DiskUsage::parseDuMaxDepth1( $stdout, $dir );
                 $mailDiskUsage += $total;
-
-                # A failed du leaves these mailboxes at their previous figures
-                next if $rs;
 
                 my $map = iMSCP::DiskUsage::mapMailboxUsage( $domain, $byAcc, $mailAddrs );
                 @mailboxUsage{keys %{$map}} = values %{$map};
+            }
+
+            if ( $duFailed ) {
+                error( "Disk usage of domain '$dmnData->{'domain_name'}' could not be measured: previous figures kept" );
+                next;
             }
 
             $totalDiskUsage = $webDiskUsage+$mailDiskUsage;
@@ -184,10 +196,10 @@ sub quotaFiles
                     '
                         UPDATE domain
                         SET domain_disk_usage = ?, domain_disk_file = ?, domain_disk_mail = ?,
-                            domain_disk_usage_time = IF(?, domain_disk_usage_time, UNIX_TIMESTAMP())
+                            domain_disk_usage_time = UNIX_TIMESTAMP()
                         WHERE domain_id = ?
                     ',
-                    undef, $totalDiskUsage, $webDiskUsage, $mailDiskUsage, $duFailed, $dmnId
+                    undef, $totalDiskUsage, $webDiskUsage, $mailDiskUsage, $dmnId
                 );
                 $updateMailboxSth->execute( $mailboxUsage{$_}, $_ ) for keys %mailboxUsage;
                 $dbh->do(

@@ -15,34 +15,39 @@ my $dir = '/var/mail/virtual/example.com';
 
 subtest 'several mailboxes and the domain total' => sub {
     my $out = "4096\t$dir/john\n1048576\t$dir/john.doe\n12288\t$dir/info\n1069056\t$dir\n";
-    my ( $total, $byAcc ) = iMSCP::DiskUsage::parseDuMaxDepth1( $out, $dir );
+    my ( $total, $byAcc, $complete ) = iMSCP::DiskUsage::parseDuMaxDepth1( $out, $dir );
     is $total, 1069056, 'total is the line for the domain directory itself';
     is_deeply $byAcc, { john => 4096, 'john.doe' => 1048576, info => 12288 }, 'one entry per mailbox directory';
+    ok $complete, 'complete: the domain directory line is present';
 };
 
 subtest 'trailing slash on the domain directory' => sub {
-    my ( $total, $byAcc ) = iMSCP::DiskUsage::parseDuMaxDepth1( "10\t$dir/a\n20\t$dir\n", "$dir/" );
+    my ( $total, $byAcc, $complete ) = iMSCP::DiskUsage::parseDuMaxDepth1( "10\t$dir/a\n20\t$dir\n", "$dir/" );
     is $total, 20;
+    ok $complete;
     is_deeply $byAcc, { a => 10 };
 };
 
 subtest 'empty output' => sub {
-    my ( $total, $byAcc ) = iMSCP::DiskUsage::parseDuMaxDepth1( '', $dir );
+    my ( $total, $byAcc, $complete ) = iMSCP::DiskUsage::parseDuMaxDepth1( '', $dir );
     is $total, 0;
+    ok !$complete, 'empty output is incomplete';
     is_deeply $byAcc, {};
 };
 
 subtest 'partial output from a failed du still yields what was printed' => sub {
-    my ( $total, $byAcc ) = iMSCP::DiskUsage::parseDuMaxDepth1( "10\t$dir/a\n", $dir );
+    my ( $total, $byAcc, $complete ) = iMSCP::DiskUsage::parseDuMaxDepth1( "10\t$dir/a\n", $dir );
     is $total, 10, 'without a total line, the total is the sum of the children';
+    ok !$complete, 'no domain directory line: incomplete';
     is_deeply $byAcc, { a => 10 };
 };
 
 subtest 'lines outside the domain directory are ignored' => sub {
-    my ( $total, $byAcc ) = iMSCP::DiskUsage::parseDuMaxDepth1(
+    my ( $total, $byAcc, $complete ) = iMSCP::DiskUsage::parseDuMaxDepth1(
         "5\t/var/mail/virtual/other.com/x\n10\t$dir/a\n10\t$dir\n", $dir
     );
     is $total, 10;
+    ok $complete;
     is_deeply $byAcc, { a => 10 };
 };
 

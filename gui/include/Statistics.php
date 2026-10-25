@@ -220,7 +220,8 @@ define('DISK_USAGE_APPROACHING_PERCENT', 80);
 /**
  * Grade disk usage against a disk limit
  *
- * The disk limit is informational: nothing is enforced. Usage above the
+ * The panel does not enforce the disk limit for web, mail or SQL; ProFTPD still
+ * refuses FTP uploads at the limit. Usage above the
  * limit is over it; at or above DISK_USAGE_APPROACHING_PERCENT it is
  * approaching it.
  *
@@ -245,6 +246,21 @@ function getDiskUsageState($usageBytes, $limitBytes)
     }
 
     return ['state' => $state, 'percent' => $percent];
+}
+
+/**
+ * Get the label of a disk usage state
+ *
+ * @param string $state 'ok'|'approaching'|'over'
+ * @return string Label, empty when the state is ok
+ */
+function getDiskUsageStateLabel($state)
+{
+    if ($state == 'over') {
+        return tr('Over limit');
+    }
+
+    return $state == 'approaching' ? tr('Approaching limit') : '';
 }
 
 /**
@@ -396,4 +412,18 @@ function getResellerDiskUsageStates($resellerId)
     }
 
     return $states;
+}
+
+/**
+ * Count the reseller's customers that are over or approaching their disk limit
+ *
+ * @param int $resellerId Reseller unique identifier
+ * @return array ['over' => int, 'approaching' => int, 'states' => result of getResellerDiskUsageStates()]
+ */
+function getResellerDiskUsageCounts($resellerId)
+{
+    $states = getResellerDiskUsageStates($resellerId);
+    $counts = array_count_values(array_column($states, 'state')) + ['over' => 0, 'approaching' => 0];
+
+    return ['over' => $counts['over'], 'approaching' => $counts['approaching'], 'states' => $states];
 }

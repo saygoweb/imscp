@@ -25,9 +25,11 @@ use warnings;
 
  Param string $stdout Output of du -B1 --max-depth=1 $domainDir
  Param string $domainDir Mail domain directory
- Return list ( int $totalBytes, hashref { <mail_acc> => bytes } ). When the
-        output has no line for the domain directory itself (du failed part
-        way), the total is the sum of the mailbox lines
+ Return list ( int $totalBytes, hashref { <mail_acc> => bytes }, bool $complete ).
+        $complete is true when the output has the line for the domain directory
+        itself, which du prints last: the scan finished, even if du exited
+        non-zero because files vanished meanwhile. Without that line (du died
+        part way), the total is the sum of the mailbox lines
 
 =cut
 
@@ -37,6 +39,7 @@ sub parseDuMaxDepth1
 
     $domainDir =~ s%/+$%%;
     my ( $total, %byAcc );
+    my $complete = 0;
 
     for my $line ( split /\n/, $stdout // '' ) {
         next unless $line =~ /^(\d+)\t(.+)$/;
@@ -45,6 +48,7 @@ sub parseDuMaxDepth1
 
         if ( $path eq $domainDir ) {
             $total = $bytes;
+            $complete = 1;
         } elsif ( index( $path, "$domainDir/" ) == 0 ) {
             my $acc = substr( $path, length( $domainDir ) + 1 );
             $byAcc{$acc} = $bytes unless index( $acc, '/' ) >= 0;
@@ -56,7 +60,7 @@ sub parseDuMaxDepth1
         $total += $_ for values %byAcc;
     }
 
-    ( $total, \%byAcc );
+    ( $total, \%byAcc, $complete );
 }
 
 =item mapMailboxUsage( $domainName, \%bytesByAcc, \@mailAddrs )

@@ -61,8 +61,7 @@ function _generateUserStatistics(TemplateEngine $tpl, $adminId)
         'DISK_MSG'              => ($diskLimit > 0)
             ? tohtml(sprintf('%s / %s', bytesHuman($diskUsage), bytesHuman($diskLimit)))
             : tohtml(sprintf('%s / ∞', bytesHuman($diskUsage))),
-        'DISK_STATE'            => tohtml($diskState['state'] == 'over'
-            ? tr('Over limit') : ($diskState['state'] == 'approaching' ? tr('Approaching limit') : '')),
+        'DISK_STATE'            => tohtml(getDiskUsageStateLabel($diskState['state'])),
         'DISK_STATE_CLASS'      => tohtml('disk_' . $diskState['state'], 'htmlAttr'),
         'DISK_SORT'             => tohtml($diskLimit > 0 ? $diskUsage / $diskLimit : 0, 'htmlAttr'),
         'WEB'                   => tohtml(bytesHuman($webTraffic)),
@@ -86,8 +85,8 @@ function _generateUserStatistics(TemplateEngine $tpl, $adminId)
  */
 function generatePage(TemplateEngine $tpl)
 {
-    $diskStates = getResellerDiskUsageStates($_SESSION['user_id']);
-    $counts = array_count_values(array_column($diskStates, 'state')) + ['over' => 0, 'approaching' => 0];
+    $counts = getResellerDiskUsageCounts($_SESSION['user_id']);
+    $diskStates = $counts['states'];
     $summary = getDiskUsageSummaryMessage($counts['over'], $counts['approaching']);
     $filterDisk = isset($_GET['filter']) && $_GET['filter'] == 'disk';
 
@@ -107,6 +106,8 @@ function generatePage(TemplateEngine $tpl)
 
     $stmt = exec_query('SELECT admin_id FROM admin WHERE created_by = ?', $_SESSION['user_id']);
 
+    $hasRows = false;
+
     while ($row = $stmt->fetchRow(PDO::FETCH_ASSOC)) {
         if ($filterDisk && !isset($diskStates[$row['admin_id']])) {
             continue;
@@ -114,6 +115,12 @@ function generatePage(TemplateEngine $tpl)
 
         _generateUserStatistics($tpl, $row['admin_id']);
         $tpl->parse('USER_STATISTICS_ENTRY_BLOCK', '.user_statistics_entry_block');
+        $hasRows = true;
+    }
+
+    if (!$hasRows && $filterDisk) {
+        $tpl->assign('USER_STATISTICS_ENTRY_BLOCK', '');
+        set_page_message(tr('No customers are approaching or over their disk limit.'), 'static_info');
     }
 }
 
