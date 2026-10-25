@@ -194,7 +194,7 @@ function generateMailAccountsList($tpl, $mainDmnId)
 
     $stmt = exec_query(
         "
-          SELECT mail_id, mail_acc, mail_forward, mail_type, status, mail_auto_respond, quota, mail_addr
+          SELECT mail_id, mail_acc, mail_forward, mail_type, status, mail_auto_respond, quota, mail_disk_usage, mail_addr
           FROM mail_users
           WHERE domain_id = ?
           $where
@@ -218,9 +218,13 @@ function generateMailAccountsList($tpl, $mainDmnId)
     $postfixConfig = new FileConfig(utils_normalizePath(Registry::get('config')['CONF_DIR'] . '/postfix/postfix.data'));
     $syncQuotaInfo = isset($_GET['sync_quota_info']);
     $hasMailboxes = $overQuota = false;
+    $mainDmnProps = get_domain_default_props($_SESSION['user_id']);
+    $diskLimitBytes = $mainDmnProps['domain_disk_limit'] * 1048576;
+    $hasUnlimitedMailboxes = false;
 
     while ($row = $stmt->fetchRow(PDO::FETCH_ASSOC)) {
         $mailQuotaInfo = '-';
+        $mailSizeSort = -1;
         $quotaPercent = 0;
 
         foreach (explode(',', $row['mail_type']) as $type) {
@@ -246,14 +250,21 @@ function generateMailAccountsList($tpl, $mainDmnId)
             $hasMailboxes = true;
             list($user, $domain) = explode('@', $row['mail_addr']);
 
-            $maildirsize = ($row['quota'])
-                ? parseMaildirsize(
-                    utils_normalizePath($postfixConfig['MTA_VIRTUAL_MAIL_DIR'] . "/$domain/$user/maildirsize"),
-                    $syncQuotaInfo
-                ) : false;
+            if (!$row['quota']) {
+                // No quota of its own: show the daily figure against the account's disk limit
+                $hasUnlimitedMailboxes = true;
+                $mailSizeSort = (int)$row['mail_disk_usage'];
+                $mailQuotaInfo = formatMailboxUsage($row['mail_disk_usage'], 0, $diskLimitBytes);
+                continue;
+            }
+
+            $maildirsize = parseMaildirsize(
+                utils_normalizePath($postfixConfig['MTA_VIRTUAL_MAIL_DIR'] . "/$domain/$user/maildirsize"),
+                $syncQuotaInfo
+            );
 
             if ($maildirsize === false) {
-                $mailQuotaInfo = ($row['quota']) ? '- / ' . bytesHuman($row['quota']) : '- / ∞';
+                $mailQuotaInfo = formatMailboxUsage(NULL, $row['quota'], $diskLimitBytes);
                 continue;
             }
 
@@ -263,11 +274,9 @@ function generateMailAccountsList($tpl, $mainDmnId)
                 $overQuota = true;
             }
 
-            $mailQuotaInfo = sprintf(
-                '%s / %s (%.0f%%)',
-                bytesHuman($maildirsize['byte_count']),
-                bytesHuman($maildirsize['quota_bytes']),
-                $quotaPercent
+            $mailSizeSort = (int)$maildirsize['byte_count'];
+            $mailQuotaInfo = formatMailboxUsage(
+                $maildirsize['byte_count'], $maildirsize['quota_bytes'], $diskLimitBytes
             );
         }
 
@@ -276,6 +285,7 @@ function generateMailAccountsList($tpl, $mainDmnId)
             'MAIL_ACCOUNT_ADDR'       => tohtml(substr(decode_idna('-' . $row['mail_addr']), 1)),
             'MAIL_ACCOUNT_TYPE'       => tohtml(user_trans_mail_type($row['mail_acc'], $row['mail_type'])),
             'MAIL_ACCOUNT_QUOTA_INFO' => tohtml($mailQuotaInfo),
+            'MAIL_ACCOUNT_SIZE_SORT'  => tohtml($mailSizeSort, 'htmlAttr'),
             'MAIL_ACCOUNT_STATUS'     => translate_dmn_status($row['status'])
         ]);
 
@@ -305,6 +315,18 @@ function generateMailAccountsList($tpl, $mainDmnId)
 
     if ($overQuota) {
         set_page_message(tr('At least one of your mailboxes is over quota.'), 'static_warning');
+    }
+
+    if ($hasUnlimitedMailboxes) {
+        set_page_message(
+            empty($mainDmnProps['domain_disk_usage_time'])
+                ? tr('Sizes of mailboxes without a quota have not been measured yet.')
+                : tr(
+                    'Sizes of mailboxes without a quota were measured %s.',
+                    date(Registry::get('config')['DATE_FORMAT'] . ' H:i', $mainDmnProps['domain_disk_usage_time'])
+                ),
+            'static_info'
+        );
     }
 
     return $rowCount;

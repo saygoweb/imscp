@@ -133,3 +133,4 @@
     </tr>
     </tbody>
 </table>
+<p>{DISK_USAGE_MEASURED}</p>
