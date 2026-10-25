@@ -158,7 +158,7 @@ function client_editMailAccount()
             }
 
             if ($mailQuotaLimitBytes > $customerEmailQuotaLimitBytes - $customerMailboxesQuotaSumBytes) {
-                set_page_message(tr('Mail quota cannot be bigger than %s', bytesHuman($mailQuotaLimitBytes)), 'error');
+                set_page_message(tr('Mail quota cannot be bigger than %s', bytesHuman($customerEmailQuotaLimitBytes - $customerMailboxesQuotaSumBytes)), 'error');
                 return false;
             }
         }

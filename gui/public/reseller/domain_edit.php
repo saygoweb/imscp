@@ -972,8 +972,10 @@ function reseller_checkAndUpdateData($domainId)
             }
 
             // Sync mailboxes quota if needed
-            if ($data['fallback_mail_quota'] != ($data['mail_quota'] * 1048576)) {
-                sync_mailboxes_quota($domainId, $data['mail_quota'] * 1048576);
+            if ($data['fallback_mail_quota'] != ($data['mail_quota'] * 1048576)
+                && sync_mailboxes_quota($domainId, $data['mail_quota'] * 1048576)
+            ) {
+                $needDaemonRequest = true;
             }
 
             // Update Ftp quota limit if needed
