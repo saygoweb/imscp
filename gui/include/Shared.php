@@ -1322,8 +1322,9 @@ function update_reseller_props($resellerId, $props)
  *
  * Algorithm:
  *
- * 1. In case the new quota limit is 0 (unlimited), equal or bigger than the sum
- *    of current quotas, we do nothing
+ * 1. In case the new quota limit is 0 (unlimited), every mailbox becomes
+ *    unlimited too: the account has no mail quota left to share out. In case it
+ *    is equal or bigger than the sum of current quotas, we do nothing
  * 2. We have a running total, which start at zero
  * 3. We divide the quota of each mailbox by the sum of current quotas, then we
  *    multiply the result by the new quota limit
@@ -1345,7 +1346,8 @@ function update_reseller_props($resellerId, $props)
  *
  * @param int $domainId Customer main domain unique identifier
  * @param int $newQuota New quota limit in bytes
- * @return void
+ * @return bool TRUE when mailboxes were scheduled for change, and so need a
+ *              daemon request
  */
 function sync_mailboxes_quota($domainId, $newQuota)
 {
@@ -1353,7 +1355,18 @@ function sync_mailboxes_quota($domainId, $newQuota)
     set_time_limit(0);
 
     if ($newQuota == 0) {
-        return;
+        // Status 'tochange' makes the po server drop the maildirsize file that
+        // courier still enforces the old quota from. A mailbox already waiting
+        // on the daemon keeps its status: it is processed with the new quota.
+        $stmt = exec_query(
+            "
+                UPDATE mail_users SET quota = 0, status = IF(status = 'ok', 'tochange', status)
+                WHERE domain_id = ? AND quota > 0
+            ",
+            [$domainId]
+        );
+
+        return $stmt->rowCount() > 0;
     }
 
     $cfg = Registry::get('config');
@@ -1368,7 +1381,7 @@ function sync_mailboxes_quota($domainId, $newQuota)
     );
 
     if (!$stmt->rowCount()) {
-        return;
+        return false;
     }
 
     $mailboxes = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -1410,6 +1423,8 @@ function sync_mailboxes_quota($domainId, $newQuota)
             );
         }
     }
+
+    return false;
 }
 
 /*******************************************************************************
